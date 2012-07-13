@@ -1,4 +1,4 @@
 fruit-ninja
 ===========
 
-the fruit ninja game by js
+实在抱歉，我们的源码还没有完全准备好，将会在 2012-07-16 提供，请届时再进行 pull。
