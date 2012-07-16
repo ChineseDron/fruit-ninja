@@ -3,6 +3,7 @@
  */
 var timeline = require("timeline");
 var Ucren = require("lib/ucren");
+var sound = require("lib/sound");
 var fruit = require("factory/fruit");
 var score = require("object/score");
 var message = require("message");
@@ -22,6 +23,9 @@ var volleyNum = 2, volleyMultipleNumber = 5;
 var fruits = [];
 var gameInterval;
 
+var snd;
+var boomSnd;
+
 // fruit barbette
 var barbette = function(){
     if( fruits.length >= volleyNum )
@@ -31,11 +35,15 @@ var barbette = function(){
     var f = fruit.create( startX, startY ).shotOut( 0, endX );
 
     fruits.push( f );
+    snd.play();
+
     barbette();
 };
 
 // start game
 exports.start = function(){
+    snd = sound.create( "sound/throw" );
+    boomSnd = sound.create( "sound/boom" );
     timeline.setTimeout(function(){
         state( "game-state" ).set( "playing" );
         gameInterval = timeline.setInterval( barbette, 1e3 );
@@ -77,6 +85,7 @@ exports.sliceAt = function( fruit, angle ){
         score.number( ++ scoreNumber );
         this.applyScore( scoreNumber );
     }else{
+        boomSnd.play();
         this.pauseAllFruit();
         background.wobble();
         light.start( fruit );

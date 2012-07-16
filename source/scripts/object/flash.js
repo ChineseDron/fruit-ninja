@@ -6,7 +6,9 @@ var layer = require("../layer");
 var timeline = require("../timeline")
 var tween = require("../lib/tween");
 var Ucren = require("../lib/ucren");
-var image, xDiff = 0, yDiff = 0;
+var sound = require("../lib/sound");
+
+var image, snd, xDiff = 0, yDiff = 0;
 
 var anim = tween.quadratic.cio;
 var anims = [];
@@ -19,6 +21,7 @@ var switchOn = true;
 
 exports.set = switchOn ? function(){
 	image = layer.createImage( "flash", "images/flash.png", 0, 0, 358, 20 ).hide();
+	snd = sound.create( "sound/splatter" );
 } : Ucren.nul;
 
 exports.showAt = switchOn ? function( x, y, an ){
@@ -29,6 +32,8 @@ exports.showAt = switchOn ? function( x, y, an ){
     }).show();
 
     anims.clear && anims.clear();
+
+    snd.play();
 
     timeline.createTask({
 		start: 0, duration: dur, data: [ 1e-5, 1 ],

@@ -2,6 +2,7 @@ var timeline = require("timeline");
 var tools = require("tools");
 var sence = require("sence");
 var Ucren = require("lib/ucren");
+var buzz = require("lib/buzz");
 var control = require("control");
 var csl = require("object/console");
 var message = require("message");
@@ -75,5 +76,14 @@ message.addEventListener("slice.at", function( fruit, angle ){
     }
 });
 
+var tip = "";
+
 if( !Ucren.isChrome )
-    Ucren.Element("browser").html("为了获得最佳流畅度，我们推荐您使用 <span class='b'>Google Chrome 浏览器</span> 体验本游戏");
+    tip = "$为了获得最佳流畅度，推荐您使用 <span class='b'>Google Chrome</span> 体验本游戏";
+
+if( !buzz.isSupported() )
+    tip = tip.replace( "$", "您的浏览器不支持 &lt;audio&gt 播放声效，且" );
+
+tip = tip.replace( "$", "" );
+
+Ucren.Element( "browser" ).html( tip );
