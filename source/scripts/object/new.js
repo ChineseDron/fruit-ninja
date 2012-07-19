@@ -1,7 +1,7 @@
-var layer = require("../layer");
-var tween = require("../lib/tween");
-var timeline = require("../timeline");
-var Ucren = require("../lib/ucren");
+var layer = require( "../layer" );
+var tween = require( "../lib/tween" );
+var timeline = require( "../timeline" );
+var Ucren = require( "../lib/ucren" );
 
 var image;
 var cycleTime = 300;

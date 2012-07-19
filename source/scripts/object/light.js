@@ -2,14 +2,14 @@
  * 炸弹爆炸时的光线
  */
 
-var layer = require("../layer");
+var layer = require( "../layer" );
 
 var maskLayer = layer.getLayer( "mask" );
 	layer = layer.getLayer( "light" );
 
-var Ucren = require("../lib/ucren");
-var timeline = require("../timeline");
-var message = require("../message");
+var Ucren = require( "../lib/ucren" );
+var timeline = require( "../timeline" );
+var message = require( "../message" );
 
 var random = Ucren.randomNumber;
 var pi = Math.PI;
@@ -26,16 +26,16 @@ for(var i = 0; i < lightsNum; i ++)
 exports.start = function( boom ){
 	var x = boom.originX, y = boom.originY, time = 0, idx = indexs.random();
 
-	var b = function(){
+	var i = lightsNum, b = function(){
 	    build( x, y, idx[ this ] );
 	};
 
-	for(var i = 0; i < lightsNum; i ++)
-		timeline.setTimeout( b.bind( i ), time += 200 );
+	while( i -- )
+		timeline.setTimeout( b.bind( i ), time += 100 );
 
 	timeline.setTimeout(function(){
 	    this.overWhiteLight();
-	}.bind( this ), time + 200);
+	}.bind( this ), time + 100);
 };
 
 exports.overWhiteLight = function(){

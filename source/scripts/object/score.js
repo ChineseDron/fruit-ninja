@@ -1,12 +1,12 @@
-var layer = require("../layer");
-var tween = require("../lib/tween");
-var timeline = require("../timeline");
-var Ucren = require("../lib/ucren");
+var layer = require( "../layer" );
+var tween = require( "../lib/tween" );
+var timeline = require( "../timeline" );
+var Ucren = require( "../lib/ucren" );
 
 var setTimeout = timeline.setTimeout.bind( timeline );
 var anim = tween.exponential.co;
 
-var message = require("../message");
+var message = require( "../message" );
 
 /**
  * 分数模块

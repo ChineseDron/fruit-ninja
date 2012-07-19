@@ -1,5 +1,5 @@
-var fruit = require("factory/fruit");
-var Ucren = require("lib/ucren");
+var fruit = require( "factory/fruit" );
+var Ucren = require( "lib/ucren" );
 
 var fruits = fruit.getFruitInView();
 

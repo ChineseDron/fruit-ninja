@@ -1,11 +1,11 @@
 /**
  * 果汁
  */
-var Ucren = require("../lib/ucren");
-var layer = require("../layer").getLayer("juice");
-var timeline = require("../timeline");
-var tween = require("../lib/tween");
-var tools = require("../tools");
+var Ucren = require( "../lib/ucren" );
+var layer = require( "../layer" ).getLayer("juice");
+var timeline = require( "../timeline" ).use( "juice" ).init( 10 );
+var tween = require( "../lib/tween" );
+var tools = require( "../tools" );
 
 var random = Ucren.randomNumber;
 var dur = 1500;
@@ -14,11 +14,14 @@ var dropAnim = tween.quadratic.co;
 var sin = Math.sin;
 var cos = Math.cos;
 
-var switchOn = true;
 var num = 10;
+var radius = 10;
 
-if( Ucren.isIe || Ucren.isSafari )
-	num = 7;
+// if( Ucren.isIe6 || Ucren.isSafari )
+//     switchOn = false;
+
+// if( Ucren.isIe || Ucren.isSafari )
+// 	num = 6;
 
 function ClassJuice( x, y, color ){
 	this.originX = x;
@@ -26,7 +29,7 @@ function ClassJuice( x, y, color ){
 	this.color = color;
 
     this.distance = random( 200 ) + 100;
-    this.radius = 10;
+    this.radius = radius;
     this.dir = random( 360 ) * Math.PI / 180;
 }
 
@@ -60,10 +63,10 @@ ClassJuice.prototype.onTimeEnd = function(){
 	tools.unsetObject( this );
 };
 
-exports.create = switchOn ? function( x, y, color ){
+exports.create = function( x, y, color ){
     for(var i = 0; i < num; i ++)
     	this.createOne( x, y, color );
-} : Ucren.nul;
+};
 
 exports.createOne = function( x, y, color ){
 	if( !color )

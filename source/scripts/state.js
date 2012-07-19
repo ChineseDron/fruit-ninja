@@ -3,8 +3,8 @@
  * @author 	dron
  * @date 	2012-06-28
  */
-var Ucren = require("lib/ucren");
-var timeline = require("timeline");
+var Ucren = require( "lib/ucren" );
+var timeline = require( "timeline" );
 
 /**
  * usage:
@@ -21,6 +21,7 @@ var timeline = require("timeline");
 
 var stack = {};
 var cache = {};
+var callbacks = {};
 
 exports = function( key ){
 
@@ -48,9 +49,17 @@ exports = function( key ){
 			return this.is( undefined );
 		},
 
-		set: function( value ){
-		    return stack[key] = value;
-		},
+		set: function(){
+			var lastValue = NaN;
+			return function( value ){
+			    var c;
+			    stack[key] = value;
+			    if( lastValue !== value && ( c = callbacks[ key ] ) )
+			    	for(var i = 0, l = c.length; i < l; i ++)
+			    		c[i].call( this, value );
+			   	lastValue = value;
+			}
+		}(),
 
 		get: function(){
 		    return stack[key];
@@ -74,6 +83,18 @@ exports = function( key ){
 		    		timeline.setTimeout( me.set.saturate( me, true ), time );
 		    	}
 		    }
+		},
+
+		hook: function( fn ){
+			var c;
+		    if( !( c = callbacks[ key ] ) )
+		        callbacks[ key ] = [ fn ];
+		    else
+		    	c.push( fn );
+		},
+
+		unhook: function(){
+		    // TODO: 
 		}
 	}
 };

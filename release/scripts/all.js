@@ -1,6 +1,6 @@
 ﻿/**
  * this file was compiled by jsbuild 0.9.6
- * @date Mon, 16 Jul 2012 18:46:47 UTC
+ * @date Thu, 19 Jul 2012 16:31:35 UTC
  * @author dron
  * @site http://ucren.com
  */
@@ -134,12 +134,12 @@ define("scripts/control.js", function(exports){
 	exports.installDragger = function(){
 	    var dragger = new Ucren.BasicDrag({ type: "calc" });
 	
-	    dragger.on("returnValue", function( dx, dy, x, y, kf ){
+	    dragger.on( "returnValue", function( dx, dy, x, y, kf ){
 	    	if( kf = knife.through( x - canvasLeft, y - canvasTop ) )
 	            message.postMessage( kf, "slice" );
 	    });
 	
-	    dragger.on("startDrag", function(){
+	    dragger.on( "startDrag", function(){
 	        knife.newKnife();
 	    });
 	
@@ -147,7 +147,7 @@ define("scripts/control.js", function(exports){
 	};
 	
 	exports.installClicker = function(){
-	    Ucren.addEvent(document, "click", function(){
+	    Ucren.addEvent( document, "click", function(){
 	        if( state( "click-enable" ).ison() )
 	        	message.postMessage( "click" );
 	    });
@@ -156,14 +156,14 @@ define("scripts/control.js", function(exports){
 	exports.fixCanvasPos = function(){
 		var de = document.documentElement;
 	
-		var fix = function(e){
-		    canvasLeft = (de.clientWidth - 640) / 2;
-		    canvasTop = (de.clientHeight - 480) / 2 - 40;
+		var fix = function( e ){
+		    canvasLeft = ( de.clientWidth - 640 ) / 2;
+		    canvasTop = ( de.clientHeight - 480 ) / 2 - 40;
 		};
 	
 		fix();
 	
-		Ucren.addEvent(window, "resize", fix);
+		Ucren.addEvent( window, "resize", fix );
 	};;
 
 	return exports;
@@ -231,6 +231,7 @@ define("scripts/game.js", function(exports){
 	    gameInterval.stop();
 	
 	    gameOver.show();
+	    
 	    // timeline.setTimeout(function(){
 	    //     // sence.switchSence( "home-menu" );
 	    //     // TODO: require 出现互相引用时，造成死循环，这个问题需要跟进，这里暂时用 postMessage 代替
@@ -286,13 +287,17 @@ define("scripts/game.js", function(exports){
 	        fruits.splice( index, 1 );
 	});
 	
-	message.addEventListener("fruit.fallOutOfViewer", function( fruit ){
-	    if( state( "game-state" ).isnot( "playing" ) )
-	        return ;
-	
+	var eventFruitFallOutOfViewer = function( fruit ){
 	    if( fruit.type != "boom" )
 	        lose.showLoseAt( fruit.originX );
-	});
+	};
+	
+	state( "game-state" ).hook( function( value ){
+	    if( value == "playing" )
+	        message.addEventListener( "fruit.fallOutOfViewer", eventFruitFallOutOfViewer );
+	    else
+	        message.removeEventListener( "fruit.fallOutOfViewer", eventFruitFallOutOfViewer );
+	} );
 	
 	message.addEventListener("game.over", function(){
 	    exports.gameOver();
@@ -514,6 +519,15 @@ define("scripts/message.js", function(exports){
 	exports.addEventListener = function( from, fn ){
 		Ucren.dispatch( from, fn );
 	};
+	
+	/**
+	 * remove an message handler
+	 * @param {String}   from 	message address
+	 * @param {Function} fn 	message handler
+	 */
+	exports.removeEventListener = function( from, fn ){
+		Ucren.dispatch.remove( from, fn );
+	};;
 
 	return exports;
 });
@@ -736,6 +750,7 @@ define("scripts/state.js", function(exports){
 	
 	var stack = {};
 	var cache = {};
+	var callbacks = {};
 	
 	exports = function( key ){
 	
@@ -763,9 +778,17 @@ define("scripts/state.js", function(exports){
 				return this.is( undefined );
 			},
 	
-			set: function( value ){
-			    return stack[key] = value;
-			},
+			set: function(){
+				var lastValue = NaN;
+				return function( value ){
+				    var c;
+				    stack[key] = value;
+				    if( lastValue !== value && ( c = callbacks[ key ] ) )
+				    	for(var i = 0, l = c.length; i < l; i ++)
+				    		c[i].call( this, value );
+				   	lastValue = value;
+				}
+			}(),
 	
 			get: function(){
 			    return stack[key];
@@ -789,6 +812,18 @@ define("scripts/state.js", function(exports){
 			    		timeline.setTimeout( me.set.saturate( me, true ), time );
 			    	}
 			    }
+			},
+	
+			hook: function( fn ){
+				var c;
+			    if( !( c = callbacks[ key ] ) )
+			        callbacks[ key ] = [ fn ];
+			    else
+			    	c.push( fn );
+			},
+	
+			unhook: function(){
+			    // TODO: 
 			}
 		}
 	};;
@@ -803,56 +838,76 @@ define("scripts/state.js", function(exports){
 define("scripts/timeline.js", function(exports){
 	/**
 	 * a easy timeline manager
-	 * @version 0.9
+	 * @version 1.0
 	 * @author dron
 	 */
 	
 	var Ucren = require("scripts/lib/ucren");
+	var timerCache = {};
+	var timeline = {};
+	
+	// var timer = timeline;
+	// <or>
+	// var timer = timeline.use( name ).init( 10 ); // to use a new timeline instance
+	// 
+	// var t = timer.createTask(...);
+	// t.stop();
+	// 
+	// timer.setTimeout(...);
+	// timer.setInterval(...);
+	// timer.getFPS();
+	
+	function ClassTimer(){
+	    this.tasks = [];
+	    this.addingTasks = [];
+	    this.adding = 0;
+	}
 	
 	/**
 	 * initialize timeline
 	 */
-	exports.init = function(){
+	ClassTimer.prototype.init = function( ms ){
 		var me = this;
+	
+		if( me.inited )
+		    return ;
+		else
+			me.inited = 1;
+	
 		me.startTime = now();
+		me.intervalTime = ms || 5;
 		me.count = 0;
 	
-	 //    var interval = function(){
-		// 	me.count ++;
-		//     update( now() );
-		//     requestAnimationFrame( interval );
-		// };
-	
-		// interval();
-		
-		var time = 1;
-	
-		// if( Ucren.isSafari )
-		//     time = 10;
-	
-		setInterval( function(){
+		me.intervalFn = function(){
 		    me.count ++;
-		    update( now() );
-		}, time );
+		    me.update( now() );
+		};
+	
+		me.start();
+	
+		return me;
 	};
+	
 	
 	/**
 	 * create a task
 	 * @param  {Object} conf 	the config
 	 * @return {Task} 			a task instance
 	 */
-	exports.createTask = function( conf ){
-		/* e.g. createTask({
-			start: 500, duration: 2000, data: [a, b, c,..],
-			object: module, onTimeUpdate: fn(time, a, b, c,..), onTimeStart: fn(a, b, c,..), onTimeEnd: fn(a, b, c,..),
+	ClassTimer.prototype.createTask = function( conf ){
+		/* e.g. timer.createTask({
+			start: 500, duration: 2000, data: [a, b, c,..], object: module, 
+			onTimeUpdate: fn(time, a, b, c,..), onTimeStart: fn(a, b, c,..), onTimeEnd: fn(a, b, c,..),
 			recycle: []
 		}); */
-		var task = createTask(conf);
-	    addingTasks.unshift( task );
-	    adding = 1;
+		var task = createTask( conf );
+	    this.addingTasks.unshift( task );
+	    this.adding = 1;
 	
 	    if( conf.recycle )
 	    	this.taskList( conf.recycle, task );
+	
+	    this.start();
 	
 	    return task;
 	};
@@ -863,10 +918,11 @@ define("scripts/timeline.js", function(exports){
 	 * @param  {Task} task 		a task instance		
 	 * @return {Array}			this queue
 	 */
-	exports.taskList = function( queue, task ){
+	ClassTimer.prototype.taskList = function( queue, task ){
 		if( !queue.clear )
 			queue.clear = function(){
-				for(var task, i = this.length - 1; i >= 0; i --)
+				var i = this.length;
+				while( i -- )
 					task = this[i],
 					task.stop(),
 					this.splice( i, 1 );
@@ -884,7 +940,7 @@ define("scripts/timeline.js", function(exports){
 	 * @param {Function} fn 	callback function
 	 * @param {Number}   time 	time, unit: ms
 	 */
-	exports.setTimeout = function( fn, time ){
+	ClassTimer.prototype.setTimeout = function( fn, time ){
 	    // e.g. setTimeout(fn, time);
 	    return this.createTask({ start: time, duration: 0, onTimeStart: fn });
 	};
@@ -894,7 +950,7 @@ define("scripts/timeline.js", function(exports){
 	 * @param {Function} fn 	callback function
 	 * @param {Number}   time 	time, unit: ms
 	 */
-	exports.setInterval = function( fn, time ){
+	ClassTimer.prototype.setInterval = function( fn, time ){
 	    // e.g. setInterval(fn, time);
 	    var timer = setInterval( fn, time );
 	    return {
@@ -908,72 +964,28 @@ define("scripts/timeline.js", function(exports){
 	 * get the current fps
 	 * @return {Number} fps number
 	 */
-	exports.getFPS = function(){
-		var t = now(), fps = this.count / (t - this.startTime) * 1e3;
-		if(this.count > 1e3)
+	ClassTimer.prototype.getFPS = function(){
+		var t = now(), c = this.count, fps = c / ( t - this.startTime ) * 1e3;
+		if( c > 1e3 )
 			this.count = 0,
 			this.startTime = t;
 		return fps;
 	};
 	
-	/**
-	 * @private
-	 */
+	// privates
 	
-	var Ucren = require("scripts/lib/ucren");
-	var tasks = [], addingTasks = [], adding = 0;
-	
-	var now = function(){
-		return new Date().getTime();
+	ClassTimer.prototype.start = function(){
+		clearInterval( this.interval );
+		this.interval = setInterval( this.intervalFn, this.intervalTime );
 	};
 	
-	// var requestAnimationFrame = function( glob ){
-	// 	return glob.requestAnimationFrame ||
-	// 		glob.mozRequestAnimationFrame ||
-	// 		glob.webkitRequestAnimationFrame ||
-	// 		glob.msRequestAnimationFrame ||
-	// 		glob.oRequestAnimationFrame || function( callback ) {
-	// 			setTimeout( callback, 1 );
-	// 		};
-	// }( window );
-	
-	var createTask = function( conf ){
-		var object = conf.object || {};
-		conf.start = conf.start || 0;
-		return {
-			start: conf.start + now(),
-			duration: conf.duration == -1 ? 86400000 : conf.duration,
-			data: conf.data ? [0].concat( conf.data ) : [0],
-			started: 0,
-			object: object,
-			onTimeStart: conf.onTimeStart || object.onTimeStart || Ucren.nul,
-			onTimeUpdate: conf.onTimeUpdate || object.onTimeUpdate || Ucren.nul,
-			onTimeEnd: conf.onTimeEnd || object.onTimeEnd || Ucren.nul,
-			stop: function(){
-			    this.stopped = 1;
-			}
-		}
+	ClassTimer.prototype.stop = function(){
+		clearInterval( this.interval );
 	};
 	
-	var updateTask = function( task, time ){
-		var data = task.data;
-		data[0] = time;
-		task.onTimeUpdate.apply( task.object, data );
-	};
-	
-	var checkStartTask = function( task ){
-		if( !task.started ){
-			task.started = 1;
-		    task.onTimeStart.apply( task.object, task.data.slice(1) );
-		    updateTask( task, 0 );
-		}
-	};
-	
-	var update = function(time){
+	ClassTimer.prototype.update = function( time ){
+		var tasks = this.tasks, addingTasks = this.addingTasks, adding = this.adding;
 		var i = tasks.length, t, task, start, duration, data;
-	
-		// TODO: 三八五时检查一下 tasks 有没有释放完成
-		// document.title = i;
 	
 		while( i -- ){
 	    	task = tasks[i];
@@ -997,10 +1009,72 @@ define("scripts/timeline.js", function(exports){
 	    	}
 		}
 	
-	    if( adding ){
-	    	tasks.unshift.apply( tasks, addingTasks );
-	    	addingTasks.length = adding = 0;        
-	    }
+	    if( adding )
+	    	tasks.unshift.apply( tasks, addingTasks ),
+	    	addingTasks.length = adding = 0;
+	
+	    if( !tasks.length )
+	    	this.stop();
+	};
+	
+	timeline.use = function( name ){
+		var module;
+	
+		if( module = timerCache[ name ] )
+		    return module;
+		else
+			module = timerCache[ name ] = new ClassTimer;
+	
+		return module;
+	};
+	
+	/**
+	 * @functions
+	 */
+	
+	var now = function(){
+		return new Date().getTime();
+	};
+	
+	var createTask = function( conf ){
+		var object = conf.object || {};
+		conf.start = conf.start || 0;
+		return {
+			start: conf.start + now(),
+			duration: conf.duration == -1 ? 86400000 : conf.duration,
+			data: conf.data ? [ 0 ].concat( conf.data ) : [ 0 ],
+			started: 0,
+			object: object,
+			onTimeStart: conf.onTimeStart || object.onTimeStart || Ucren.nul,
+			onTimeUpdate: conf.onTimeUpdate || object.onTimeUpdate || Ucren.nul,
+			onTimeEnd: conf.onTimeEnd || object.onTimeEnd || Ucren.nul,
+			stop: function(){
+			    this.stopped = 1;
+			}
+		}
+	};
+	
+	var updateTask = function( task, time ){
+		var data = task.data;
+		data[0] = time;
+		task.onTimeUpdate.apply( task.object, data );
+	};
+	
+	var checkStartTask = function( task ){
+		if( !task.started )
+			task.started = 1,
+		    task.onTimeStart.apply( task.object, task.data.slice(1) ),
+		    updateTask( task, 0 );
+	};
+	
+	/**
+	 * for compatible the old version
+	 */
+	exports = timeline.use( "default" ).init( 10 );
+	exports.use = function( name ){
+		if( Ucren.isIe )
+		    exports;
+		return timeline.use( name );
 	};;
 
 	return exports;
@@ -1126,7 +1200,8 @@ define("scripts/factory/displacement.js", function(exports){
 define("scripts/factory/fruit.js", function(exports){
 	var layer = require("scripts/layer");
 	var Ucren = require("scripts/lib/ucren");
-	var timeline = require("scripts/timeline");
+	var timeline = require("scripts/timeline").use( "fruit" ).init( 1 );
+	var timeline2 = require("scripts/timeline").use( "fruit-apart" ).init( 1 );
 	var tween = require("scripts/lib/tween");
 	var message = require("scripts/message");
 	var flame = require("scripts/object/flame");
@@ -1200,7 +1275,11 @@ define("scripts/factory/fruit.js", function(exports){
 	};
 	
 	ClassFruit.prototype.pos = function( x, y ){
+		if( x == this.originX && y == this.originY )
+		    return ;
+	
 		var r = this.radius;
+	
 		this.originX = x;
 		this.originY = y;
 	
@@ -1209,10 +1288,6 @@ define("scripts/factory/fruit.js", function(exports){
 	
 		if( this.type === "boom" )
 		    this.flame.pos( x + 4, y + 5 );
-	
-		if( this.fallOffing && !this.fallOutOfViewerCalled && y > 480 + this.radius )
-			this.fallOutOfViewerCalled = 1,
-		    message.postMessage( this, "fruit.fallOutOfViewer" );
 	};
 	
 	ClassFruit.prototype.show = function( start ){
@@ -1238,7 +1313,7 @@ define("scripts/factory/fruit.js", function(exports){
 	
 	ClassFruit.prototype.rotate = function( start, speed ){
 		this.rotateSpeed = speed || rotateSpeed[ random( 6 ) ];
-		timeline.createTask({ 
+		this.rotateAnim = timeline.createTask({
 			start: start, duration: -1, 
 			object: this, onTimeUpdate: this.onRotating,
 			recycle: this.anims
@@ -1287,7 +1362,7 @@ define("scripts/factory/fruit.js", function(exports){
 		[ this.bImage1, this.bImage2 ].invoke( "rotate", angle );
 	
 		this.apartAngle = angle;
-		timeline.createTask({ 
+		timeline2.createTask({ 
 			start: 0, duration: dropTime, object: this, 
 			onTimeUpdate: this.onBrokenDropUpdate, onTimeStart: this.onBrokenDropStart, onTimeEnd: this.onBrokenDropEnd,
 			recycle: this.anims
@@ -1326,7 +1401,6 @@ define("scripts/factory/fruit.js", function(exports){
 	
 			if( this.aparted || this.brokend )
 				return ;
-			this.fallOffing = 1;
 	
 			var y = 600;
 	
@@ -1454,10 +1528,12 @@ define("scripts/factory/fruit.js", function(exports){
 	// 掉落相关
 	
 	ClassFruit.prototype.onFalling = function( time ){
+		var y;
 		this.pos( 
 			linearAnim( time, this.brokenPosX, this.fallTargetX - this.brokenPosX, dropTime ), 
-			dropAnim( time, this.brokenPosY, this.fallTargetY - this.brokenPosY, dropTime ) 
+			y = dropAnim( time, this.brokenPosY, this.fallTargetY - this.brokenPosY, dropTime ) 
 		);
+		this.checkForFallOutOfViewer( y );
 	};
 	
 	ClassFruit.prototype.onFallStart = function(){
@@ -1468,6 +1544,15 @@ define("scripts/factory/fruit.js", function(exports){
 	ClassFruit.prototype.onFallEnd = function(){
 		message.postMessage( this, "fruit.fallOff" );
 		this.remove();
+	};
+	
+	// privates
+	
+	ClassFruit.prototype.checkForFallOutOfViewer = function( y ){
+		if( y > 480 + this.radius )
+			this.checkForFallOutOfViewer = Ucren.nul,
+			this.rotateAnim && this.rotateAnim.stop(),
+		    message.postMessage( this, "fruit.fallOutOfViewer" );
 	};
 	
 	exports.create = function( type, originX, originY, isHide, flameStart ){
@@ -1511,7 +1596,7 @@ define("scripts/factory/juice.js", function(exports){
 	 */
 	var Ucren = require("scripts/lib/ucren");
 	var layer = require("scripts/layer").getLayer("juice");
-	var timeline = require("scripts/timeline");
+	var timeline = require("scripts/timeline").use( "juice" ).init( 10 );
 	var tween = require("scripts/lib/tween");
 	var tools = require("scripts/tools");
 	
@@ -1522,11 +1607,14 @@ define("scripts/factory/juice.js", function(exports){
 	var sin = Math.sin;
 	var cos = Math.cos;
 	
-	var switchOn = true;
 	var num = 10;
+	var radius = 10;
 	
-	if( Ucren.isIe || Ucren.isSafari )
-		num = 7;
+	// if( Ucren.isIe6 || Ucren.isSafari )
+	//     switchOn = false;
+	
+	// if( Ucren.isIe || Ucren.isSafari )
+	// 	num = 6;
 	
 	function ClassJuice( x, y, color ){
 		this.originX = x;
@@ -1534,7 +1622,7 @@ define("scripts/factory/juice.js", function(exports){
 		this.color = color;
 	
 	    this.distance = random( 200 ) + 100;
-	    this.radius = 10;
+	    this.radius = radius;
 	    this.dir = random( 360 ) * Math.PI / 180;
 	}
 	
@@ -1568,10 +1656,10 @@ define("scripts/factory/juice.js", function(exports){
 		tools.unsetObject( this );
 	};
 	
-	exports.create = switchOn ? function( x, y, color ){
+	exports.create = function( x, y, color ){
 	    for(var i = 0; i < num; i ++)
 	    	this.createOne( x, y, color );
-	} : Ucren.nul;
+	};
 	
 	exports.createOne = function( x, y, color ){
 		if( !color )
@@ -2571,15 +2659,24 @@ define("scripts/lib/sound.js", function(exports){
 	 */
 	
 	var buzz = require("scripts/lib/buzz");
+	var supported = buzz.isSupported();
+	
+	var config = { 
+		formats: [ "ogg", "mp3" ], 
+		preload: true, 
+		autoload: true, 
+		loop: false 
+	};
 	
 	function ClassBuzz( src ){
-	    this.sound = new buzz.sound( src, { formats: [ "ogg", "mp3" ], preload: true, autoload: true, loop: false });
+	    this.sound = new buzz.sound( src, config );
 	}
 	
-	ClassBuzz.prototype.play = function(){
-		this.sound.setPercent( 0 );
-		this.sound.setVolume( 100 );
-		this.sound.play();
+	ClassBuzz.prototype.play = function( s ){
+		s = this.sound;
+		s.setPercent( 0 );
+		s.setVolume( 100 );
+		s.play();
 	};
 	
 	ClassBuzz.prototype.stop = function(){
@@ -2588,9 +2685,22 @@ define("scripts/lib/sound.js", function(exports){
 		} );
 	};
 	
+	
 	exports.create = function( src ){
-	    return new ClassBuzz( src );
-	};
+		if( !supported )
+		    return unSupported;
+		else
+	    	return new ClassBuzz( src );
+	}
+	
+	function unSupported(){
+		// TODO: 
+	}
+	
+	unSupported.play =
+	unSupported.stop = function(){
+		// TODO: 
+	};;
 
 	return exports;
 });
@@ -2648,27 +2758,27 @@ define("scripts/lib/ucren.js", function(exports){
 	//
 	
 	// String.prototype.trim
-	if(!String.prototype.trim)
+	if( !String.prototype.trim )
 		String.prototype.trim = function(){
-			return this.replace(/^\s+|\s+$/, "");
+			return this.replace( /^\s+|\s+$/, "" );
 		};
 	
 	// String.prototype.format
-	String.prototype.format = function(conf){
+	String.prototype.format = function( conf ){
 		var rtn = this, blank = {};
-		Ucren.each(conf, function(item, key){
-			item = item.toString().replace(/\$/g, "$$$$");
-			rtn = rtn.replace(RegExp("@{" + key + "}", "g"), item);
+		Ucren.each( conf, function( item, key ){
+			item = item.toString().replace( /\$/g, "$$$$" );
+			rtn = rtn.replace( RegExp( "@{" + key + "}", "g" ), item );
 		});
 		return rtn.toString();
 	};
 	
 	// String.prototype.htmlEncode
 	String.prototype.htmlEncode = function(){
-		var div = document.createElement("div");
+		var div = document.createElement( "div" );
 		return function(){
 			var text;
-			div.appendChild(document.createTextNode(this));
+			div.appendChild( document.createTextNode( this ));
 			text = div.innerHTML;
 			div.innerHTML = "";
 			return text;
@@ -2677,43 +2787,43 @@ define("scripts/lib/ucren.js", function(exports){
 	
 	// String.prototype.byteLength
 	String.prototype.byteLength = function(){
-		return this.replace(/[^\x00-\xff]/g, "  ").length;
+		return this.replace( /[^\x00-\xff]/g, "  " ).length;
 	};
 	
 	// String.prototype.subByte
-	String.prototype.subByte = function(len, tail){
+	String.prototype.subByte = function( len, tail ){
 		var s = this;
-		if(s.byteLength() <= len)
+		if( s.byteLength() <= len )
 			return s;
 		tail = tail || "";
 		len -= tail.byteLength();
-		return s = s.slice(0, len).replace(/([^\x00-\xff])/g, "$1 ")
-			.slice(0, len)
-			.replace(/[^\x00-\xff]$/, "")
-			.replace(/([^\x00-\xff]) /g, "$1") + tail;
+		return s = s.slice( 0, len ).replace( /( [^\x00-\xff] )/g, "$1 " )
+			.slice( 0, len )
+			.replace( /[^\x00-\xff]$/, "" )
+			.replace( /( [^\x00-\xff] ) /g, "$1" ) + tail;
 	}
 	
 	// Function.prototype.defer
-	Function.prototype.defer = function(scope, timeout){
+	Function.prototype.defer = function( scope, timeout ){
 		var me = this;
 		var fn = function(){
-			me.apply(scope, arguments);
+			me.apply( scope, arguments );
 		};
-		return setTimeout(fn, timeout);
+		return setTimeout( fn, timeout );
 	};
 	
 	
 	// Function.prototype.bind
-	if(!Function.prototype.bind)
-		Function.prototype.bind = function(scope){
+	if( !Function.prototype.bind )
+		Function.prototype.bind = function( scope ){
 			var me = this;
 			return function(){
-				return me.apply(scope, arguments);
+				return me.apply( scope, arguments );
 			}
 		};
 	
 	// Function.prototype.saturate
-	Function.prototype.saturate = function(scope/*, args */){
+	Function.prototype.saturate = function( scope/*, args */ ){
 		var fn = this, afters = slice.call( arguments, 1 );
 		return function(){
 			return fn.apply( scope, slice.call( arguments, 0 ).concat( afters ) );
@@ -2721,7 +2831,7 @@ define("scripts/lib/ucren.js", function(exports){
 	};
 	
 	// Array.prototype.indexOf
-	// if(!Array.prototype.indexOf)
+	// if( !Array.prototype.indexOf )
 		Array.prototype.indexOf = function( item, i ){
 			var length = this.length;
 	
@@ -2730,51 +2840,51 @@ define("scripts/lib/ucren.js", function(exports){
 	
 			if( i < 0 )
 				i = length + i;
-			for(; i < length; i ++)
+			for( ; i < length; i ++ )
 				if( this[i] === item )
 					return i;
 			return -1;
 		};
 	
 	// Array.prototype.every
-	// if(!Array.prototype.every)
+	// if( !Array.prototype.every )
 		Array.prototype.every = function( fn, context ) {
-			for (var i = 0, len = this.length; i < len; i ++)
-				if ( !fn.call(context, this[i], i, this) )
+			for ( var i = 0, len = this.length; i < len; i ++ )
+				if ( !fn.call( context, this[i], i, this ) )
 					return false;
 			return true;
 		};
 	
 	// Array.prototype.filter
-	// if(!Array.prototype.filter)
+	// if( !Array.prototype.filter )
 		Array.prototype.filter = function( fn, context ) {
 			var result = [], val;
-			for (var i = 0, len = this.length; i < len; i ++)
-				if (val = this[i], fn.call( context, val, i, this ))
-					result.push(val);
+			for ( var i = 0, len = this.length; i < len; i ++ )
+				if ( val = this[i], fn.call( context, val, i, this ) )
+					result.push( val );
 			return result;
 		};
 	
 	// Array.prototype.forEach
-	// if(!Array.prototype.forEach)
+	// if( !Array.prototype.forEach )
 		Array.prototype.forEach = function( fn, context ) {
-			for (var i = 0, len = this.length; i < len; i ++)
-				fn.call(context, this[i], i, this);
+			for ( var i = 0, len = this.length; i < len; i ++ )
+				fn.call( context, this[i], i, this );
 		};
 	
 	// Array.prototype.map
-	// if(!Array.prototype.map)
+	// if( !Array.prototype.map )
 		Array.prototype.map = function( fn, context ) {
 			var result = [];
-			for (var i = 0, len = this.length; i < len; i ++)
-				result[i] = fn.call(context, this[i], i, this);
+			for ( var i = 0, len = this.length; i < len; i ++ )
+				result[i] = fn.call( context, this[i], i, this );
 			return result;
 		};
 	
 	// Array.prototype.some
-	// if(!Array.prototype.some)
+	// if( !Array.prototype.some )
 		Array.prototype.some = function( fn, context ) {
-			for (var i = 0, len = this.length; i < len; i ++)
+			for ( var i = 0, len = this.length; i < len; i ++ )
 				if ( fn.call( context, this[i], i, this ) )
 					return true;
 			return false;
@@ -2782,9 +2892,9 @@ define("scripts/lib/ucren.js", function(exports){
 	
 		Array.prototype.invoke = function( method /*, args */ ){
 		    var args = slice.call( arguments, 1 );
-	    	this.forEach(function( item ){
-		    	if(item instanceof Array)
-		    	    item[0][method].apply( item[0], item.slice(1) );
+	    	this.forEach( function( item ){
+		    	if( item instanceof Array )
+		    	    item[0][method].apply( item[0], item.slice( 1 ) );
 		    	else
 		    		item[method].apply( item, args );
 		    });
@@ -2805,44 +2915,44 @@ define("scripts/lib/ucren.js", function(exports){
 		//
 	
 		// Ucren.isIe
-		isIe: /msie/i.test(navigator.userAgent),
+		isIe: /msie/i.test( navigator.userAgent ),
 	
 		// Ucren.isIe6
-		isIe6: /msie 6/i.test(navigator.userAgent),
+		isIe6: /msie 6/i.test( navigator.userAgent ),
 	
 		// Ucren.isFirefox
-		isFirefox: /firefox/i.test(navigator.userAgent),
+		isFirefox: /firefox/i.test( navigator.userAgent ),
 	
 		// Ucren.isSafari
-		isSafari: /version\/[\d\.]+\s+safari/i.test(navigator.userAgent),
+		isSafari: /version\/[\d\.]+\s+safari/i.test( navigator.userAgent ),
 	
 		// Ucren.isOpera
-		isOpera: /opera/i.test(navigator.userAgent),
+		isOpera: /opera/i.test( navigator.userAgent ),
 	
 		// Ucren.isChrome
-		isChrome: /chrome/i.test(navigator.userAgent), //todo isChrome = true, isSafari = true
+		isChrome: /chrome/i.test( navigator.userAgent ), //todo isChrome = true, isSafari = true
 	
 		// Ucren.isStrict
 		isStrict: document.compatMode == "CSS1Compat",
 	
 		// Ucren.tempDom
-		tempDom: document.createElement("div"),
+		tempDom: document.createElement( "div" ),
 	
 		//
 		// [全局方法]
 		//
 	
 		// Ucren.apply
-		apply: function(form, to, except){
-			if(!to)to = {};
-			if(except){
-				Ucren.each(form, function(item, key){
-					if(key in except)
+		apply: function( form, to, except ){
+			if( !to )to = {};
+			if( except ){
+				Ucren.each( form, function( item, key ){
+					if( key in except )
 						return ;
 					to[key] = item;
 				});
 			}else{
-				Ucren.each(form, function(item, key){
+				Ucren.each( form, function( item, key ){
 					to[key] = item;
 				});
 			}
@@ -2850,51 +2960,51 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.appendStyle
-		appendStyle: function(text){
+		appendStyle: function( text ){
 			var style;
 	
-			if(arguments.length > 1)
-				text = join.call(arguments, "");
+			if( arguments.length > 1 )
+				text = join.call( arguments, "" );
 	
-			if(document.createStyleSheet){
+			if( document.createStyleSheet ){
 				style = document.createStyleSheet();
 				style.cssText = text;
 			}else{
-				style = document.createElement("style");
+				style = document.createElement( "style" );
 				style.type = "text/css";
 				//style.innerHTML = text; fix Chrome bug
-				style.appendChild(document.createTextNode(text));
-				document.getElementsByTagName("head")[0].appendChild(style);
+				style.appendChild( document.createTextNode( text ));
+				document.getElementsByTagName( "head" )[0].appendChild( style );
 			}
 		},
 	
-		// for copy :)
+		// for copy : )
 		//
-		// var addEvent = function(target, name, fn){
+		// var addEvent = function( target, name, fn ){
 		// 	var call = function(){
-		// 		fn.apply(target, arguments);
+		// 		fn.apply( target, arguments );
 		// 	};
-		// 	if(window.attachEvent)
-		// 		target.attachEvent("on" + name, call);
-		// 	else if(window.addEventListener)
-		// 		target.addEventListener(name, call, false);
+		// 	if( window.attachEvent )
+		// 		target.attachEvent( "on" + name, call );
+		// 	else if( window.addEventListener )
+		// 		target.addEventListener( name, call, false );
 		// 	else
 		// 		target["on" + name] = call;
 		// 	return call;
 		// }
 	
 		// Ucren.addEvent
-		addEvent: function(target, name, fn){
+		addEvent: function( target, name, fn ){
 			var call = function(){
-				fn.apply(target, arguments);
+				fn.apply( target, arguments );
 			};
-			if(target.dom){
+			if( target.dom ){
 				target = target.dom;
 			}
-			if(window.attachEvent){
-				target.attachEvent("on" + name, call);
-			}else if(window.addEventListener){
-				target.addEventListener(name, call, false);
+			if( window.attachEvent ){
+				target.attachEvent( "on" + name, call );
+			}else if( window.addEventListener ){
+				target.addEventListener( name, call, false );
 			}else{
 				target["on" + name] = call;
 			}
@@ -2902,51 +3012,51 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.delEvent
-		delEvent: function(target, name, fn){
-			if(window.detachEvent){
-				target.detachEvent("on" + name, fn);
-			}else if(window.removeEventListener){
-				target.removeEventListener(name, fn, false);
-			}else if(target["on" + name] == fn){
+		delEvent: function( target, name, fn ){
+			if( window.detachEvent ){
+				target.detachEvent( "on" + name, fn );
+			}else if( window.removeEventListener ){
+				target.removeEventListener( name, fn, false );
+			}else if( target["on" + name] == fn ){
 				target["on" + name] = null;
 			}
 		},
 	
 		// Ucren.Class
-		Class: function(initialize, methods, befores, afters){
+		Class: function( initialize, methods, befores, afters ){
 			var fn, prototype, blank;
 			initialize = initialize || function(){};
 			methods = methods || {};
 			blank = {};
 			fn = function(){
 				this.instanceId = Ucren.id();
-				initialize.apply(this, arguments);
+				initialize.apply( this, arguments );
 			};
 			prototype = fn.prototype;
-			Ucren.registerClassEvent.call(prototype);
-			Ucren.each(methods, function(item, key){
-				prototype[key] = function(method, name){
-					if(typeof(method) == "function"){
+			Ucren.registerClassEvent.call( prototype );
+			Ucren.each( methods, function( item, key ){
+				prototype[key] = function( method, name ){
+					if( typeof( method ) == "function" ){
 						return function(){
 							var args, rtn;
-							args = slice.call(arguments, 0);
-							if(befores &&
-								befores.apply(this, [name].concat(args)) === false){
+							args = slice.call( arguments, 0 );
+							if( befores &&
+								befores.apply( this, [name].concat( args )) === false ){
 								return ;
 							}
-							this.fireEvent("before" + name, args);
-							rtn = method.apply(this, args);
-							if(afters)
-								afters.apply(this, [name].concat(args));
-							this.fireEvent(name, args);
+							this.fireEvent( "before" + name, args );
+							rtn = method.apply( this, args );
+							if( afters )
+								afters.apply( this, [name].concat( args ));
+							this.fireEvent( name, args );
 							return rtn;
 						};
 					}else{
 						return method;
 					}
-				}(item, key);
+				}( item, key );
 			});
-			prototype.getOriginMethod = function(name){
+			prototype.getOriginMethod = function( name ){
 				return methods[name];
 			};
 			return fn;
@@ -2954,20 +3064,20 @@ define("scripts/lib/ucren.js", function(exports){
 	
 		//private
 		registerClassEvent: function(){
-			this.on = function(name, fn){
+			this.on = function( name, fn ){
 				var instanceId = this.instanceId;
-				Ucren.dispatch(instanceId + name, fn.bind(this));
+				Ucren.dispatch( instanceId + name, fn.bind( this ));
 			};
-			this.onbefore = function(name, fn){
+			this.onbefore = function( name, fn ){
 				var instanceId = this.instanceId;
-				Ucren.dispatch(instanceId + "before" + name, fn.bind(this));
+				Ucren.dispatch( instanceId + "before" + name, fn.bind( this ));
 			};
-			this.un = function(name, fn){
+			this.un = function( name, fn ){
 				//todo
 			};
-			this.fireEvent = function(name, args){
+			this.fireEvent = function( name, args ){
 				var instanceId = this.instanceId;
-				Ucren.dispatch(instanceId + name, args);
+				Ucren.dispatch( instanceId + name, args );
 			};
 		},
 	
@@ -2975,15 +3085,15 @@ define("scripts/lib/ucren.js", function(exports){
 		createFuze: function(){
 			var queue, fn, infire;
 			queue = [];
-			fn = function(process){
-				if(infire){
+			fn = function( process ){
+				if( infire ){
 					process();
 				}else{
-					queue.push(process);
+					queue.push( process );
 				}
 			};
 			fn.fire = function(){
-				while(queue.length){
+				while( queue.length ){
 					queue.shift()();
 				}
 				infire = true;
@@ -2992,7 +3102,7 @@ define("scripts/lib/ucren.js", function(exports){
 				infire = false;
 			};
 			fn.wettish = function(){
-				if(queue.length){
+				if( queue.length ){
 					queue.shift()();
 				}
 			};
@@ -3000,11 +3110,11 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.createIf
-		// createIf: function(expressionFunction){
-		// 	return function(callback){
+		// createIf: function( expressionFunction ){
+		// 	return function( callback ){
 		// 		var expression = expressionFunction();
 		// 		var returnValue = {
-		// 			Else: function(callback){
+		// 			Else: function( callback ){
 		// 				callback = callback || nul;
 		// 				expression || callback();
 		// 			}
@@ -3017,66 +3127,76 @@ define("scripts/lib/ucren.js", function(exports){
 	
 		// Ucren.dispatch
 		dispatch: function(){
-			var map = {}, send, incept;
+			var map = {}, send, incept, ret;
 	
 			send = function( processId, args, scope ){
 				var processItems;
-				if( processItems = map[processId] )
-					Ucren.each(processItems, function(item){
+				if( processItems = map[ processId ] )
+					Ucren.each( processItems, function( item ){
 						item.apply( scope, args );
 					});
 			};
 	
 			incept = function( processId, fn ){
-				if( !map[processId] )
-					map[processId] = [];
-				map[processId].push( fn );
+				var m;
+				if( !( m = map[ processId ] ) )
+					map[processId] = [ fn ];
+				else
+					m.push( fn );
 			};
 	
-			return function(arg1, arg2, arg3){
-				if( typeof(arg2) === "undefined" )
+			ret = function( arg1, arg2, arg3 ){
+				if( typeof( arg2 ) === "undefined" )
 					arg2 = [];
 	
 				if( arg2 instanceof Array )
-				    send.apply(this, arguments);
-				else if( typeof(arg2) === "function" )
-				    incept.apply(this, arguments);
-			}
+				    send.apply( this, arguments );
+				else if( typeof( arg2 ) === "function" )
+				    incept.apply( this, arguments );
+			};
+	
+			ret.remove = function( processId, fn ){
+			    var m, i;
+			    if( ( m = map[ processId ] ) && ~( i = m.indexOf( fn ) ) )
+			    	m.splice( i, 1 );
+			};
+	
+			return ret;
 		}(),
 	
-		// Ucren.each (not recommended)
-		each: function(unknown, fn){
+		// Ucren.each ( not recommended )
+		each: function( unknown, fn ){
 			/// unknown 是 array 的，会慢慢退化，建议用 Array.prototype.forEach 替代
 			/// unknown 为其它类似的，短期内将暂时支持
-			if(unknown instanceof Array || (typeof unknown == "object" &&
-				typeof unknown[0] != "undefined" && unknown.length)){
-				if(typeof unknown == "object" && Ucren.isSafari)
-					unknown = slice.call(unknown);
-	//				for(var i = 0, l = unknown.length; i < l; i ++){
-	//					if(fn(unknown[i], i) === false){
+			if( unknown instanceof Array || ( typeof unknown == "object" &&
+				typeof unknown[0] != "undefined" && unknown.length )){
+				if( typeof unknown == "object" && Ucren.isSafari )
+					unknown = slice.call( unknown );
+	//				for( var i = 0, l = unknown.length; i < l; i ++ ){
+	//					if( fn( unknown[i], i ) === false ){
 	//						break;
 	//					}
 	//				}
-				unknown.forEach(fn);
-			}else if(typeof(unknown) == "object"){
+				unknown.forEach( fn );
+			}else if( typeof( unknown ) == "object" ){
 				var blank = {};
-				for(var i in unknown){
-					if(blank[i]){
+				for( var i in unknown ){
+					if( blank[i] ){
 						continue;
 					}
-					if(fn(unknown[i], i) === false){
+					if( fn( unknown[i], i ) === false ){
 						break;
 					}
 				}
-			}else if(typeof(unknown) == "number"){
-				for(var i = 0; i < unknown; i ++){
-					if(fn(i, i) === false){
+			}else if( typeof( unknown ) == "number" ){
+				for( var i = 0; i < unknown; i ++ ){
+					if( fn( i, i ) === false ){
 						break;
 					}
 				}
-			}else if(typeof(unknown) == "string"){
-				for(var i = 0, l = unknown.length; i < l; i ++){
-					if(fn(unknown.charAt(i), i) === false){
+			}else if( typeof( unknown ) == "string" ){
+				for( var i = 0, l = unknown.length; i < l; i ++ ){
+					if( fn( unknown.charAt( i ), i ) === false ){
 						break;
 					}
 				}
@@ -3084,39 +3204,39 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.Element
-		Element: function(el, returnDom){
+		Element: function( el, returnDom ){
 			var rtn, handleId;
-			if(el && el.isUcrenElement){
+			if( el && el.isUcrenElement ){
 				return returnDom ? el.dom : el;
 			}
-			el = typeof(el) == "string" ? document.getElementById(el) : el;
+			el = typeof( el ) == "string" ? document.getElementById( el ) : el;
 	
-			if(!el)
+			if( !el )
 				return null;
 	
-			if(returnDom)
+			if( returnDom )
 				return el;
 	
-			handleId = el.getAttribute("handleId");
-			if(typeof handleId == "string"){
-				return Ucren.handle(handleId - 0);
+			handleId = el.getAttribute( "handleId" );
+			if( typeof handleId == "string" ){
+				return Ucren.handle( handleId - 0 );
 			}else{
-				rtn = new Ucren.BasicElement(el);
-				handleId = Ucren.handle(rtn);
-				el.setAttribute("handleId", handleId + "");
+				rtn = new Ucren.BasicElement( el );
+				handleId = Ucren.handle( rtn );
+				el.setAttribute( "handleId", handleId + "" );
 				return rtn;
 			}
 		},
 	
 		// Ucren.Event
-		Event: function(e){
+		Event: function( e ){
 			e = e || window.event;
 	
-			if(!e){
+			if( !e ){
 				var c = arguments.callee.caller;
-				while(c){
+				while( c ){
 					e = c.arguments[0];
-					if(e && typeof(e.altKey) == "boolean"){ // duck typing
+					if( e && typeof( e.altKey ) == "boolean" ){ // duck typing
 						break;
 					}
 					c = c.caller;
@@ -3128,22 +3248,22 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.fixNumber
-		fixNumber: function(unknown, defaultValue){
-			return typeof(unknown) == "number" ? unknown : defaultValue;
+		fixNumber: function( unknown, defaultValue ){
+			return typeof( unknown ) == "number" ? unknown : defaultValue;
 		},
 	
 		// Ucren.fixString
-		fixString: function(unknown, defaultValue){
-			return typeof(unknown) == "string" ? unknown : defaultValue;
+		fixString: function( unknown, defaultValue ){
+			return typeof( unknown ) == "string" ? unknown : defaultValue;
 		},
 	
 		// Ucren.fixConfig
-		fixConfig: function(conf){
+		fixConfig: function( conf ){
 			var defaultConf;
 			defaultConf = {};
-			if(typeof conf == "undefined"){
+			if( typeof conf == "undefined" ){
 				return defaultConf;
-			}else if(typeof conf == "function"){
+			}else if( typeof conf == "function" ){
 				return new conf;
 			}else{
 				return conf;
@@ -3151,19 +3271,19 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.handle
-		handle: function(unknown){
+		handle: function( unknown ){
 			var fn, type, number;
 			fn = arguments.callee;
-			if(!fn.cache){
+			if( !fn.cache ){
 				fn.cache = {};
 			}
-			if(typeof(fn.number) == "undefined"){
+			if( typeof( fn.number ) == "undefined" ){
 				fn.number = 0;
 			}
-			type = typeof(unknown);
-			if(type == "number"){
+			type = typeof( unknown );
+			if( type == "number" ){
 				return fn.cache[unknown.toString()];
-			}else if(type == "object" || type == "function"){
+			}else if( type == "object" || type == "function" ){
 				number = fn.number ++;
 				fn.cache[number.toString()] = unknown;
 				return number;
@@ -3178,52 +3298,52 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.loadImage
-		loadImage: function(urls, onLoadComplete){
+		loadImage: function( urls, onLoadComplete ){
 			var length = urls.length;
 			var loaded = 0;
 			var check = function(){
-				if(loaded == length)
+				if( loaded == length )
 					onLoadComplete && onLoadComplete();
 			};
-			Ucren.each(urls, function(url){
-				var img = document.createElement("img");
+			Ucren.each( urls, function( url ){
+				var img = document.createElement( "img" );
 				img.onload = img.onerror = function(){
 					this.onload = this.onerror = null;
 					loaded ++;
 					check();
 				};
-				Ucren.tempDom.appendChild(img);
+				Ucren.tempDom.appendChild( img );
 				img.src = url;
 			});
 		},
 	
 		// Ucren.loadScript
-		loadScript: function(src, callback){
-			Ucren.request(src, function(text){
-				eval(text);
-				callback && callback(text);
+		loadScript: function( src, callback ){
+			Ucren.request( src, function( text ){
+				eval( text );
+				callback && callback( text );
 			});
 		},
 	
 		// Ucren.makeElement
-		makeElement: function(tagName, attributes){
-			var el = document.createElement(tagName);
-			var setStyle = function(unknown){
-				if(typeof unknown == "string")
+		makeElement: function( tagName, attributes ){
+			var el = document.createElement( tagName );
+			var setStyle = function( unknown ){
+				if( typeof unknown == "string" )
 					el.style.cssText = unknown;
 				else
-					Ucren.apply(unknown, el.style);
+					Ucren.apply( unknown, el.style );
 			};
 	
-			for (var prop in attributes) {
-				if (prop === "class")
+			for ( var prop in attributes ) {
+				if ( prop === "class" )
 					el.className = attributes[prop];
-				else if (prop === "for")
+				else if ( prop === "for" )
 					el.htmlFor = attributes[prop];
-				else if(prop === "style")
-					setStyle(attributes[prop]);
+				else if( prop === "style" )
+					setStyle( attributes[prop] );
 				else
-					el.setAttribute(prop, attributes[prop]);
+					el.setAttribute( prop, attributes[prop] );
 			}
 	
 			return el;
@@ -3235,79 +3355,79 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		// Ucren.queryString
-		// queryString: function(name, sourceString){
+		// queryString: function( name, sourceString ){
 		// 	var source, pattern, result;
 		// 	source = sourceString || location.href;
-		// 	pattern = new RegExp("(\\?|&)" + name + "=([^&#]*)(#|&|$)", "i");
-		// 	result = source.match(pattern);
+		// 	pattern = new RegExp( "( \\?|& )" + name + "=( [^&#]* )( #|&|$ )", "i" );
+		// 	result = source.match( pattern );
 		// 	return result ? result[2] : "";
 		// },
 	
 		// Ucren.randomNumber
-		randomNumber: function(num){
-			return Math.floor(Math.random() * num);
+		randomNumber: function( num ){
+			return Math.floor( Math.random() * num );
 		},
 	
 		// Ucren.randomWord
 		randomWord: function(){
 			var cw = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-			return function(length, sourceString){
+			return function( length, sourceString ){
 				var words, re = [];
 				words = sourceString || cw;
-				Ucren.each(length, function(index){
-					re[index] = words.charAt(this.randomNumber(words.length));
-				}.bind(this));
-				return re.join("");
+				Ucren.each( length, function( index ){
+					re[index] = words.charAt( this.randomNumber( words.length ));
+				}.bind( this ));
+				return re.join( "" );
 			}
 		}(),
 	
 		// Ucren.request
-		request: function(url, callback){
+		request: function( url, callback ){
 			request = Ucren.request;
 			var xhr = request.xhr;
-			if(!request.xhr){
-				if(window.XMLHttpRequest){
+			if( !request.xhr ){
+				if( window.XMLHttpRequest ){
 					xhr = request.xhr = new XMLHttpRequest();
 				}else{
-					xhr = request.xhr = new ActiveXObject("Microsoft.XMLHTTP");
+					xhr = request.xhr = new ActiveXObject( "Microsoft.XMLHTTP" );
 				}
 			}
-			xhr.open("GET", url, true);
+			xhr.open( "GET", url, true );
 			xhr.onreadystatechange = function(){
-				if(xhr.readyState == 4 && xhr.status == 200){
-					callback(xhr.responseText);
+				if( xhr.readyState == 4 && xhr.status == 200 ){
+					callback( xhr.responseText );
 				}
 			};
-			xhr.send(null);
+			xhr.send( null );
 		}
 	
 		// // Ucren.decodeColor
 		// decodeColor: function(){
-		// 	var r = /^\#?(\w{2})(\w{2})(\w{2})$/;
-		// 	var x = function(x){
-		// 		return parseInt(x, 16);
+		// 	var r = /^\#?( \w{2})( \w{2})( \w{2})$/;
+		// 	var x = function( x ){
+		// 		return parseInt( x, 16 );
 		// 	};
-		// 	return function(color){
-		// 		r.test(color);
+		// 	return function( color ){
+		// 		r.test( color );
 		// 		return {
-		// 			red: x(RegExp.$1),
-		// 			green: x(RegExp.$2),
-		// 			blue: x(RegExp.$3)
+		// 			red: x( RegExp.$1 ),
+		// 			green: x( RegExp.$2 ),
+		// 			blue: x( RegExp.$3 )
 		// 		};
 		// 	}
 		// }(),
 	
 		// // Ucren.encodeColor
 		// encodeColor: function(){
-		// 	var x = function(x){
-		// 		return x.toString(16).split(".")[0];
+		// 	var x = function( x ){
+		// 		return x.toString( 16 ).split( "." )[0];
 		// 	};
-		// 	x = x.improve(function(origin, x){
-		// 		x = origin(x);
+		// 	x = x.improve( function( origin, x ){
+		// 		x = origin( x );
 		// 		return x.length == 1 ? "0" + x : x;
 		// 	});
-		// 	return function(data){
-		// 		return ["#", x(data.red), x(data.green), x(data.blue)].join("");
+		// 	return function( data ){
+		// 		return ["#", x( data.red ), x( data.green ), x( data.blue )].join( "" );
 		// 	}
 		// }()
 	};
@@ -3317,10 +3437,10 @@ define("scripts/lib/ucren.js", function(exports){
 	//
 	
 	// Ucren.BasicDrag
-	Ucren.BasicDrag = Ucren.Class(
-		/* constructor */ function(conf){
-			conf = Ucren.fixConfig(conf);
-			this.type = Ucren.fixString(conf.type, "normal");
+	Ucren.BasicDrag = Ucren.Class( 
+		/* constructor */ function( conf ){
+			conf = Ucren.fixConfig( conf );
+			this.type = Ucren.fixString( conf.type, "normal" );
 	
 			var isTouch = this.isTouch = "ontouchstart" in window;
 	
@@ -3330,28 +3450,28 @@ define("scripts/lib/ucren.js", function(exports){
 		},
 	
 		/* methods */ {
-			bind: function(el, handle){
-				el = Ucren.Element(el);
-				handle = Ucren.Element(handle) || el;
+			bind: function( el, handle ){
+				el = Ucren.Element( el );
+				handle = Ucren.Element( handle ) || el;
 	
 				var evt = {};
 	
-				evt[this.TOUCH_START] = function(e){
-					e = Ucren.Event(e);
+				evt[this.TOUCH_START] = function( e ){
+					e = Ucren.Event( e );
 					this.startDrag();
 					e.cancelBubble = true;
 					e.stopPropagation && e.stopPropagation();
 					return e.returnValue = false;
-				}.bind(this);
+				}.bind( this );
 	
-				handle.addEvents(evt);
+				handle.addEvents( evt );
 				this.target = el;
 			},
 	
 			//private
-			getCoors: function(e){
+			getCoors: function( e ){
 				var coors = [];
-				if (e.targetTouches && e.targetTouches.length) { 	// iPhone
+				if ( e.targetTouches && e.targetTouches.length ) { 	// iPhone
 					var thisTouch = e.targetTouches[0];
 					coors[0] = thisTouch.clientX;
 					coors[1] = thisTouch.clientY;
@@ -3370,11 +3490,11 @@ define("scripts/lib/ucren.js", function(exports){
 	
 				this.isDraging = true;
 	
-				draging.x = parseInt(target.style("left"), 10) || 0;
-				draging.y = parseInt(target.style("top"), 10) || 0;
+				draging.x = parseInt( target.style( "left" ), 10 ) || 0;
+				draging.y = parseInt( target.style( "top" ), 10 ) || 0;
 	
 				e = Ucren.Event();
-				var coors = this.getCoors(e);
+				var coors = this.getCoors( e );
 				draging.mouseX = coors[0];
 				draging.mouseY = coors[1];
 	
@@ -3394,7 +3514,7 @@ define("scripts/lib/ucren.js", function(exports){
 				draging = target.draging;
 	
 				draging.documentSelectStart =
-					Ucren.addEvent(document, "selectstart", function(e){
+					Ucren.addEvent( document, "selectstart", function( e ){
 						e = e || event;
 						e.stopPropagation && e.stopPropagation();
 						e.cancelBubble = true;
@@ -3402,74 +3522,78 @@ define("scripts/lib/ucren.js", function(exports){
 					});
 	
 				draging.documentMouseMove =
-					Ucren.addEvent(document, this.TOUCH_MOVE, function(e){
+					Ucren.addEvent( document, this.TOUCH_MOVE, function( e ){
 						var ie, nie;
 						e = e || event;
 						ie = Ucren.isIe && e.button != 1;
 						nie = !Ucren.isIe && e.button != 0;
-						if((ie || nie) && !this.isTouch)
+						if( (ie || nie ) && !this.isTouch )
 							this.endDrag();
-						var coors = this.getCoors(e);
+						var coors = this.getCoors( e );
 						draging.newMouseX = coors[0];
 						draging.newMouseY = coors[1];
 						e.stopPropagation && e.stopPropagation();
 						return e.returnValue = false;
-					}.bind(this));
+					}.bind( this ));
 	
 				draging.documentMouseUp =
-					Ucren.addEvent(document, this.TOUCH_END, function(){
+					Ucren.addEvent( document, this.TOUCH_END, function(){
 						this.endDrag();
-					}.bind(this));
+					}.bind( this ));
 	
-				clearInterval(draging.timer);
-				draging.timer = setInterval(function(){
+				var lx, ly;
+	
+				clearInterval( draging.timer );
+				draging.timer = setInterval( function(){
 					var x, y, dx, dy;
-					if(draging.newMouseX){
+					if( draging.newMouseX != lx && draging.newMouseY != ly ){
+						lx = draging.newMouseX;
+						ly = draging.newMouseY;
 						dx = draging.newMouseX - draging.mouseX;
 						dy = draging.newMouseY - draging.mouseY;
 						x = draging.x + dx;
 						y = draging.y + dy;
-						if(this.type == "calc"){
-							this.returnValue(dx, dy, draging.newMouseX, draging.newMouseY);
+						if( this.type == "calc" ){
+							this.returnValue( dx, dy, draging.newMouseX, draging.newMouseY );
 						}else{
-							target.left(x).top(y);
+							target.left( x ).top( y );
 						}
 					}
-				}.bind(this), 10);
+				}.bind( this ), 10 );
 			},
 	
 			//private
 			unRegisterDocumentEvent: function(){
 				var draging = this.target.draging;
-				Ucren.delEvent(document, this.TOUCH_MOVE, draging.documentMouseMove);
-				Ucren.delEvent(document, this.TOUCH_END, draging.documentMouseUp);
-				Ucren.delEvent(document, "selectstart", draging.documentSelectStart);
-				clearInterval(draging.timer);
+				Ucren.delEvent( document, this.TOUCH_MOVE, draging.documentMouseMove );
+				Ucren.delEvent( document, this.TOUCH_END, draging.documentMouseUp );
+				Ucren.delEvent( document, "selectstart", draging.documentSelectStart );
+				clearInterval( draging.timer );
 			},
 	
 			//private
-			returnValue: function(dx, dy, x, y){
+			returnValue: function( dx, dy, x, y ){
 				//todo something
 			}
 		}
-	);
+	 );
 	
 	// Ucren.Template
-	Ucren.Template = Ucren.Class(
+	Ucren.Template = Ucren.Class( 
 		/* constructor */ function(){
-			this.string = join.call(arguments, "");
+			this.string = join.call( arguments, "" );
 		},
 	
 		/* methods */ {
-			apply: function(conf){
-				return this.string.format(conf);
+			apply: function( conf ){
+				return this.string.format( conf );
 			}
 		}
-	);
+	 );
 	
 	// Ucren.BasicElement
-	Ucren.BasicElement = Ucren.Class(
-		/* constructor */ function(el){
+	Ucren.BasicElement = Ucren.Class( 
+		/* constructor */ function( el ){
 			this.dom = el;
 		this.countMapping = {};
 		},
@@ -3477,212 +3601,212 @@ define("scripts/lib/ucren.js", function(exports){
 		/* methods */ {
 			isUcrenElement: true,
 	
-			attr: function(name, value){
-				if(typeof value == "string"){
-					this.dom.setAttribute(name, value);
+			attr: function( name, value ){
+				if( typeof value == "string" ){
+					this.dom.setAttribute( name, value );
 				}else{
-					return this.dom.getAttribute(name);
+					return this.dom.getAttribute( name );
 				}
 				return this;
 			},
 	
-			style: function(/* unknown1, unknown2 */){
+			style: function( /* unknown1, unknown2 */ ){
 				var getStyle = Ucren.isIe ?
-					function(name){
+					function( name ){
 						return this.dom.currentStyle[name];
 					} :
 	
-					function(name){
+					function( name ){
 						var style;
-						style = document.defaultView.getComputedStyle(this.dom, null);
-						return style.getPropertyValue(name);
+						style = document.defaultView.getComputedStyle( this.dom, null );
+						return style.getPropertyValue( name );
 					};
 	
-				return function(unknown1, unknown2){
-					if(typeof unknown1 == "object"){
-						Ucren.each(unknown1, function(value, key){
+				return function( unknown1, unknown2 ){
+					if( typeof unknown1 == "object" ){
+						Ucren.each( unknown1, function( value, key ){
 							this[key] = value;
-						}.bind(this.dom.style));
-					}else if(typeof unknown1 == "string" && typeof unknown2 == "undefined"){
-						return getStyle.call(this, unknown1);
-					}else if(typeof unknown1 == "string" && typeof unknown2 != "undefined"){
+						}.bind( this.dom.style ));
+					}else if( typeof unknown1 == "string" && typeof unknown2 == "undefined" ){
+						return getStyle.call( this, unknown1 );
+					}else if( typeof unknown1 == "string" && typeof unknown2 != "undefined" ){
 						this.dom.style[unknown1] = unknown2;
 					}
 					return this;
 				};
 			}(),
 	
-			hasClass: function(name){
+			hasClass: function( name ){
 				var className = " " + this.dom.className + " ";
-				return className.indexOf(" " + name + " ") > -1;
+				return className.indexOf( " " + name + " " ) > -1;
 			},
 	
-			setClass: function(name){
-				if(typeof(name) == "string")
+			setClass: function( name ){
+				if( typeof( name ) == "string" )
 					this.dom.className = name.trim();
 				return this;
 			},
 	
-			addClass: function(name){
+			addClass: function( name ){
 				var el, className;
 				el = this.dom;
 				className = " " + el.className + " ";
-				if(className.indexOf(" " + name + " ") == -1){
+				if( className.indexOf( " " + name + " " ) == -1 ){
 					className += name;
 					className = className.trim();
-					className = className.replace(/ +/g, " ");
+					className = className.replace( / +/g, " " );
 					el.className = className;
 				}
 				return this;
 			},
 	
-			delClass: function(name){
+			delClass: function( name ){
 				var el, className;
 				el = this.dom;
 				className = " " + el.className + " ";
-				if(className.indexOf(" " + name + " ") > -1){
-					className = className.replace(" " + name + " ", " ");
+				if( className.indexOf( " " + name + " " ) > -1 ){
+					className = className.replace( " " + name + " ", " " );
 					className = className.trim();
-					className = className.replace(/ +/g, " ");
+					className = className.replace( / +/g, " " );
 					el.className = className;
 				}
 				return this;
 			},
 	
-			html: function(html){
+			html: function( html ){
 				var el = this.dom;
 	
-				if(typeof html == "string"){
+				if( typeof html == "string" ){
 					el.innerHTML = html;
-				}else if(html instanceof Array){
-					el.innerHTML = html.join("");
+				}else if( html instanceof Array ){
+					el.innerHTML = html.join( "" );
 				}else{
 					return el.innerHTML;
 				}
 				return this;
 			},
 	
-			left: function(number){
+			left: function( number ){
 				var el = this.dom;
-				if(typeof(number) == "number"){
+				if( typeof( number ) == "number" ){
 					el.style.left = number + "px";
-					this.fireEvent("infect", [{ left: number }]);
+					this.fireEvent( "infect", [{ left: number }] );
 				}else{
 					return this.getPos().x;
 				}
 				return this;
 			},
 	
-			top: function(number){
+			top: function( number ){
 				var el = this.dom;
-				if(typeof(number) == "number"){
+				if( typeof( number ) == "number" ){
 					el.style.top = number + "px";
-					this.fireEvent("infect", [{ top: number }]);
+					this.fireEvent( "infect", [{ top: number }] );
 				}else{
 					return this.getPos().y;
 				}
 				return this;
 			},
 	
-			width: function(unknown){
+			width: function( unknown ){
 				var el = this.dom;
-				if(typeof unknown == "number"){
+				if( typeof unknown == "number" ){
 					el.style.width = unknown + "px";
-					this.fireEvent("infect", [{ width: unknown }]);
-				}else if(typeof unknown == "string"){
+					this.fireEvent( "infect", [{ width: unknown }] );
+				}else if( typeof unknown == "string" ){
 					el.style.width = unknown;
-					this.fireEvent("infect", [{ width: unknown }]);
+					this.fireEvent( "infect", [{ width: unknown }] );
 					}else{
 					return this.getSize().width;
 					}
 					return this;
 				},
 	
-			height: function(unknown){
+			height: function( unknown ){
 					var el = this.dom;
-				if(typeof unknown == "number"){
+				if( typeof unknown == "number" ){
 					el.style.height = unknown + "px";
-					this.fireEvent("infect", [{ height: unknown }]);
-				}else if(typeof unknown == "string"){
+					this.fireEvent( "infect", [{ height: unknown }] );
+				}else if( typeof unknown == "string" ){
 					el.style.height = unknown;
-					this.fireEvent("infect", [{ height: unknown }]);
+					this.fireEvent( "infect", [{ height: unknown }] );
 					}else{
 					return this.getSize().height;
 					}
 					return this;
 				},
 	
-			count: function(name){
+			count: function( name ){
 				return this.countMapping[name] = ++ this.countMapping[name] || 1;
 			},
 	
-			display: function(bool){
+			display: function( bool ){
 				var dom = this.dom;
-				if(typeof(bool) == "boolean"){
+				if( typeof( bool ) == "boolean" ){
 					dom.style.display = bool ? "block" : "none";
-					this.fireEvent("infect", [{ display: bool }]);
+					this.fireEvent( "infect", [{ display: bool }] );
 				}else{
-					return this.style("display") != "none";
+					return this.style( "display" ) != "none";
 				}
 				return this;
 			},
 	
 			first: function(){
 				var c = this.dom.firstChild;
-				while(c && !c.tagName && c.nextSibling){
+				while( c && !c.tagName && c.nextSibling ){
 					c = c.nextSibling;
 				}
 				return c;
 			},
 	
-			add: function(dom){
+			add: function( dom ){
 				var el;
-				el = Ucren.Element(dom);
-				this.dom.appendChild(el.dom);
+				el = Ucren.Element( dom );
+				this.dom.appendChild( el.dom );
 				return this;
 			},
 	
-			remove: function(dom){
+			remove: function( dom ){
 				var el;
-				if(dom){
-					el = Ucren.Element(dom);
-					el.html("");
-					this.dom.removeChild(el.dom);
+				if( dom ){
+					el = Ucren.Element( dom );
+					el.html( "" );
+					this.dom.removeChild( el.dom );
 				}else{
-					el = Ucren.Element(this.dom.parentNode);
-					el.remove(this);
+					el = Ucren.Element( this.dom.parentNode );
+					el.remove( this );
 				}
 				return this;
 			},
 	
-			insert: function(dom){
+			insert: function( dom ){
 				var tdom;
 				tdom = this.dom;
-				if(tdom.firstChild){
-					tdom.insertBefore(dom, tdom.firstChild);
+				if( tdom.firstChild ){
+					tdom.insertBefore( dom, tdom.firstChild );
 				}else{
-					this.add(dom);
+					this.add( dom );
 				}
 				return this;
 			},
 	
-			addEvents: function(conf){
+			addEvents: function( conf ){
 				var blank, el, rtn;
 				blank = {};
 				rtn = {};
 				el = this.dom;
-				Ucren.each(conf, function(item, key){
-					rtn[key] = Ucren.addEvent(el, key, item);
+				Ucren.each( conf, function( item, key ){
+					rtn[key] = Ucren.addEvent( el, key, item );
 				});
 				return rtn;
 			},
 	
-			removeEvents: function(conf){
+			removeEvents: function( conf ){
 				var blank, el;
 				blank = {};
 				el = this.dom;
-				Ucren.each(conf, function(item, key){
-					Ucren.delEvent(el, key, item);
+				Ucren.each( conf, function( item, key ){
+					Ucren.delEvent( el, key, item );
 				});
 				return this;
 			},
@@ -3692,14 +3816,14 @@ define("scripts/lib/ucren.js", function(exports){
 				el = this.dom;
 				pos = {};
 	
-				if(el.getBoundingClientRect){
+				if( el.getBoundingClientRect ){
 					box = el.getBoundingClientRect();
 					offset = Ucren.isIe ? 2 : 0;
 					var doc = document;
-					var scrollTop = Math.max(doc.documentElement.scrollTop,
-						doc.body.scrollTop);
-					var scrollLeft = Math.max(doc.documentElement.scrollLeft,
-						doc.body.scrollLeft);
+					var scrollTop = Math.max( doc.documentElement.scrollTop,
+						doc.body.scrollTop );
+					var scrollLeft = Math.max( doc.documentElement.scrollLeft,
+						doc.body.scrollLeft );
 					return {
 						x: box.left + scrollLeft - offset,
 						y: box.top + scrollTop - offset
@@ -3710,30 +3834,30 @@ define("scripts/lib/ucren.js", function(exports){
 						y: el.offsetTop
 					};
 					parentNode = el.offsetParent;
-					if(parentNode != el){
-						while(parentNode){
+					if( parentNode != el ){
+						while( parentNode ){
 							pos.x += parentNode.offsetLeft;
 							pos.y += parentNode.offsetTop;
 							parentNode = parentNode.offsetParent;
 						}
 					}
-					if(Ucren.isSafari && this.style("position") == "absolute"){ // safari doubles in some cases
+					if( Ucren.isSafari && this.style( "position" ) == "absolute" ){ // safari doubles in some cases
 						pos.x -= document.body.offsetLeft;
 						pos.y -= document.body.offsetTop;
 					}
 				}
 	
-				if(el.parentNode){
+				if( el.parentNode ){
 					parentNode = el.parentNode;
 				}else{
 					parentNode = null;
 				}
 	
-				while(parentNode && parentNode.tagName.toUpperCase() != "BODY" &&
-					parentNode.tagName.toUpperCase() != "HTML"){ // account for any scrolled ancestors
+				while( parentNode && parentNode.tagName.toUpperCase() != "BODY" &&
+					parentNode.tagName.toUpperCase() != "HTML" ){ // account for any scrolled ancestors
 					pos.x -= parentNode.scrollLeft;
 					pos.y -= parentNode.scrollTop;
-					if(parentNode.parentNode){
+					if( parentNode.parentNode ){
 						parentNode = parentNode.parentNode;
 					}else{
 						parentNode = null;
@@ -3745,9 +3869,9 @@ define("scripts/lib/ucren.js", function(exports){
 	
 			getSize: function(){
 				var dom = this.dom;
-				var display = this.style("display");
+				var display = this.style( "display" );
 	
-				if (display && display !== "none") {
+				if ( display && display !== "none" ) {
 					return { width: dom.offsetWidth, height: dom.offsetHeight };
 					}
 	
@@ -3763,125 +3887,125 @@ define("scripts/lib/ucren.js", function(exports){
 					display:    "block"
 				};
 	
-				if (originalStyles.position !== "fixed")
+				if ( originalStyles.position !== "fixed" )
 				  newStyles.position = "absolute";
 	
-				this.style(newStyles);
+				this.style( newStyles );
 	
 				var dimensions = {
 					width:  dom.offsetWidth,
 					height: dom.offsetHeight
 				};
 	
-				this.style(originalStyles);
+				this.style( originalStyles );
 	
 				return dimensions;
 			},
 	
-			observe: function(el, fn){
-				el = Ucren.Element(el);
-				el.on("infect", fn.bind(this));
+			observe: function( el, fn ){
+				el = Ucren.Element( el );
+				el.on( "infect", fn.bind( this ));
 				return this;
 			},
 	
-			usePNGbackground: function(image){
+			usePNGbackground: function( image ){
 				var dom;
 				dom = this.dom;
-				if(/\.png$/i.test(image) && Ucren.isIe6){
+				if( /\.png$/i.test( image ) && Ucren.isIe6 ){
 					dom.style.filter =
-						"progid:DXImageTransform.Microsoft.AlphaImageLoader(src='" +
-						image + "',sizingMethod='scale');";
+						"progid:DXImageTransform.Microsoft.AlphaImageLoader( src='" +
+						image + "',sizingMethod='scale' );";
 					/// 	_background: none;
-					///  _filter: progid:DXImageTransform.Microsoft.AlphaImageLoader(src='images/pic.png',sizingMethod='scale');
+					///  _filter: progid:DXImageTransform.Microsoft.AlphaImageLoader( src='images/pic.png',sizingMethod='scale' );
 				}else{
-					dom.style.backgroundImage = "url(" + image + ")";
+					dom.style.backgroundImage = "url( " + image + " )";
 				}
 				return this;
 			},
 	
 			setAlpha: function(){
 				var reOpacity = /alpha\s*\(\s*opacity\s*=\s*([^\)]+)\)/;
-				return function(value){
+				return function( value ){
 					var element = this.dom, es = element.style;
-					if(!Ucren.isIe){
+					if( !Ucren.isIe ){
 						es.opacity = value / 100;
-					/* }else if(es.filter === "string"){ */
+					/* }else if( es.filter === "string" ){ */
 					}else{
-						if (element.currentStyle && !element.currentStyle.hasLayout)
+						if ( element.currentStyle && !element.currentStyle.hasLayout )
 							es.zoom = 1;
 	
-						if (reOpacity.test(es.filter)) {
-							value = value >= 99.99 ? "" : ("alpha(opacity=" + value + ")");
-							es.filter = es.filter.replace(reOpacity, value);
+						if ( reOpacity.test( es.filter )) {
+							value = value >= 99.99 ? "" : ( "alpha( opacity=" + value + " )" );
+							es.filter = es.filter.replace( reOpacity, value );
 						} else {
-							es.filter += " alpha(opacity=" + value + ")";
+							es.filter += " alpha( opacity=" + value + " )";
 						}
 					}
 					return this;
 				};
 			}(),
 	
-			fadeIn: function(callback){
-				if(typeof this.fadingNumber == "undefined")
+			fadeIn: function( callback ){
+				if( typeof this.fadingNumber == "undefined" )
 					this.fadingNumber = 0;
-				this.setAlpha(this.fadingNumber);
+				this.setAlpha( this.fadingNumber );
 	
 				var fading = function(){
-					this.setAlpha(this.fadingNumber);
-					if(this.fadingNumber == 100){
-						clearInterval(this.fadingInterval);
+					this.setAlpha( this.fadingNumber );
+					if( this.fadingNumber == 100 ){
+						clearInterval( this.fadingInterval );
 						callback && callback();
 					}else
 						this.fadingNumber += 10;
-				}.bind(this);
+				}.bind( this );
 	
-				this.display(true);
-				clearInterval(this.fadingInterval);
-				this.fadingInterval = setInterval(fading, Ucren.isIe ? 20 : 30);
+				this.display( true );
+				clearInterval( this.fadingInterval );
+				this.fadingInterval = setInterval( fading, Ucren.isIe ? 20 : 30 );
 	
 				return this;
 			},
 	
-			fadeOut: function(callback){
-				if(typeof this.fadingNumber == "undefined")
+			fadeOut: function( callback ){
+				if( typeof this.fadingNumber == "undefined" )
 					this.fadingNumber = 100;
-				this.setAlpha(this.fadingNumber);
+				this.setAlpha( this.fadingNumber );
 	
 				var fading = function(){
-					this.setAlpha(this.fadingNumber);
-					if(this.fadingNumber == 0){
-						clearInterval(this.fadingInterval);
-						this.display(false);
+					this.setAlpha( this.fadingNumber );
+					if( this.fadingNumber == 0 ){
+						clearInterval( this.fadingInterval );
+						this.display( false );
 						callback && callback();
 					}else
 						this.fadingNumber -= 10;
-				}.bind(this);
+				}.bind( this );
 	
-				clearInterval(this.fadingInterval);
-				this.fadingInterval = setInterval(fading, Ucren.isIe ? 20 : 30);
+				clearInterval( this.fadingInterval );
+				this.fadingInterval = setInterval( fading, Ucren.isIe ? 20 : 30 );
 	
 				return this;
 			},
 	
-			useMouseAction: function(className, actions){
+			useMouseAction: function( className, actions ){
 				/**
-				 *  调用示例:  el.useMouseAction("xbutton", "over,out,down,up");
+				 *  调用示例:  el.useMouseAction( "xbutton", "over,out,down,up" );
 				 *  使用效果:  el 会在 "xbutton xbutton-over","xbutton xbutton-out","xbutton xbutton-down","xbutton xbutton-up"
 				 *             等四个 className 中根据相应的鼠标事件来进行切换。
 				 *  特别提示:  useMouseAction 可使用不同参数多次调用。
 				 */
-				if(!this.MouseAction)
+				if( !this.MouseAction )
 					this.MouseAction = new Ucren.MouseAction({ element: this });
-				this.MouseAction.use(className, actions);
+				this.MouseAction.use( className, actions );
 				return this;
 			}
 		}
-	);
+	 );
 	
-	if(Ucren.isIe)
-		document.execCommand("BackgroundImageCache", false, true);
+	if( Ucren.isIe )
+		document.execCommand( "BackgroundImageCache", false, true );
 	
-	for(var i in Ucren){
+	for( var i in Ucren ){
 	    exports[i] = Ucren[i];
 	};
 
@@ -4169,9 +4293,8 @@ define("scripts/object/flash.js", function(exports){
 	 */
 	
 	var layer = require("scripts/layer");
-	var timeline = require("scripts/timeline")
+	var timeline = require("scripts/timeline").use( "flash" ).init( 10 );
 	var tween = require("scripts/lib/tween");
-	var Ucren = require("scripts/lib/ucren");
 	var sound = require("scripts/lib/sound");
 	
 	var image, snd, xDiff = 0, yDiff = 0;
@@ -4180,21 +4303,15 @@ define("scripts/object/flash.js", function(exports){
 	var anims = [];
 	var dur = 100;
 	
-	var switchOn = true;
-	
-	// if( Ucren.isIe || Ucren.isSafari )
-	// 	switchOn = false;
-	
-	exports.set = switchOn ? function(){
+	exports.set = function(){
 		image = layer.createImage( "flash", "images/flash.png", 0, 0, 358, 20 ).hide();
 		snd = sound.create( "sound/splatter" );
-	} : Ucren.nul;
+	};
 	
-	exports.showAt = switchOn ? function( x, y, an ){
-	
+	exports.showAt = function( x, y, an ){
 	    image.rotate( an, true ).scale( 1e-5, 1e-5 ).attr({
-	    	x: x + xDiff,
-	    	y: y + yDiff
+	        x: x + xDiff,
+	        y: y + yDiff
 	    }).show();
 	
 	    anims.clear && anims.clear();
@@ -4202,21 +4319,21 @@ define("scripts/object/flash.js", function(exports){
 	    snd.play();
 	
 	    timeline.createTask({
-			start: 0, duration: dur, data: [ 1e-5, 1 ],
-			object: this, onTimeUpdate: this.onTimeUpdate,
-			recycle: anims
-		});
+	        start: 0, duration: dur, data: [ 1e-5, 1 ],
+	        object: this, onTimeUpdate: this.onTimeUpdate,
+	        recycle: anims
+	    });
 	
-		timeline.createTask({
-			start: dur, duration: dur, data: [ 1, 1e-5 ],
-			object: this, onTimeUpdate: this.onTimeUpdate,
-			recycle: anims
-		});
-	} : Ucren.nul;
+	    timeline.createTask({
+	        start: dur, duration: dur, data: [ 1, 1e-5 ],
+	        object: this, onTimeUpdate: this.onTimeUpdate,
+	        recycle: anims
+	    });
+	};
 	
-	exports.onTimeUpdate = switchOn ? function( time, a, b, z ){
+	exports.onTimeUpdate = function( time, a, b, z ){
 	    image.scale( z = anim( time, a, b - a, dur ), z );
-	} : Ucren.nul;;
+	};;
 
 	return exports;
 });
@@ -4473,16 +4590,16 @@ define("scripts/object/light.js", function(exports){
 	exports.start = function( boom ){
 		var x = boom.originX, y = boom.originY, time = 0, idx = indexs.random();
 	
-		var b = function(){
+		var i = lightsNum, b = function(){
 		    build( x, y, idx[ this ] );
 		};
 	
-		for(var i = 0; i < lightsNum; i ++)
-			timeline.setTimeout( b.bind( i ), time += 200 );
+		while( i -- )
+			timeline.setTimeout( b.bind( i ), time += 100 );
 	
 		timeline.setTimeout(function(){
 		    this.overWhiteLight();
-		}.bind( this ), time + 200);
+		}.bind( this ), time + 100);
 	};
 	
 	exports.overWhiteLight = function(){
@@ -4590,6 +4707,13 @@ define("scripts/object/lose.js", function(exports){
 	    o3 = layer.createImage( "default", conf3.src, conf3.sx, conf3.y, conf3.w, conf3.h ).hide();
 	};
 	
+	exports.reset = function(){
+	    number = 0;
+	    [ [ o1, conf1 ], [ o2, conf2 ], [ o3, conf3 ] ].forEach(function( infx ){
+	        infx[0].attr( "src", infx[1].src.replace( "xf.png", "x.png" ) );
+	    })
+	};
+	
 	exports.show = function( start ){
 	    timeline.createTask({
 			start: start, duration: animLength, data: [ "show", conf1.sx, conf1.ex, conf2.sx, conf2.ex, conf3.sx, conf3.ex ],
@@ -4621,7 +4745,6 @@ define("scripts/object/lose.js", function(exports){
 	    this.scaleImage( infx[0] );
 	    
 	    if( number == 3 )
-	        number = 0,
 	        message.postMessage( "game.over" );
 	};
 	
@@ -4659,9 +4782,7 @@ define("scripts/object/lose.js", function(exports){
 	exports.onTimeEnd = function( mode ){
 	    if( mode == "hide" )
 	        [ o1, o2, o3 ].invoke( "hide" ),
-	        [ [ o1, conf1 ], [ o2, conf2 ], [ o3, conf3 ] ].forEach(function( infx ){
-	            infx[0].attr( "src", infx[1].src.replace( "xf.png", "x.png" ) );
-	        });
+	        this.reset();
 	};
 	
 	function createPosShow( x ){

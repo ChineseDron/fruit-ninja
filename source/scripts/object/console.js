@@ -1,4 +1,4 @@
-var layer = require("../layer");
+var layer = require( "../layer" );
 
 var x = 16, y = 0;
 var texts = [];

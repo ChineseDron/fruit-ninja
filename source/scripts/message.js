@@ -4,7 +4,7 @@
  * @date 2012-06-27
  */
 
-var Ucren = require("lib/ucren");
+var Ucren = require( "lib/ucren" );
 
 /**
  * send a message
@@ -28,4 +28,13 @@ exports.postMessage = function( message/*, message, message... */, to ){
  */
 exports.addEventListener = function( from, fn ){
 	Ucren.dispatch( from, fn );
-}
+};
+
+/**
+ * remove an message handler
+ * @param {String}   from 	message address
+ * @param {Function} fn 	message handler
+ */
+exports.removeEventListener = function( from, fn ){
+	Ucren.dispatch.remove( from, fn );
+};

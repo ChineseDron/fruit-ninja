@@ -1,7 +1,7 @@
-var Ucren = require("lib/ucren");
-var knife = require("object/knife");
-var message = require("message");
-var state = require("state");
+var Ucren = require( "lib/ucren" );
+var knife = require( "object/knife" );
+var message = require( "message" );
+var state = require( "state" );
 
 var canvasLeft, canvasTop;
 
@@ -16,12 +16,12 @@ exports.init = function(){
 exports.installDragger = function(){
     var dragger = new Ucren.BasicDrag({ type: "calc" });
 
-    dragger.on("returnValue", function( dx, dy, x, y, kf ){
+    dragger.on( "returnValue", function( dx, dy, x, y, kf ){
     	if( kf = knife.through( x - canvasLeft, y - canvasTop ) )
             message.postMessage( kf, "slice" );
     });
 
-    dragger.on("startDrag", function(){
+    dragger.on( "startDrag", function(){
         knife.newKnife();
     });
 
@@ -29,7 +29,7 @@ exports.installDragger = function(){
 };
 
 exports.installClicker = function(){
-    Ucren.addEvent(document, "click", function(){
+    Ucren.addEvent( document, "click", function(){
         if( state( "click-enable" ).ison() )
         	message.postMessage( "click" );
     });
@@ -38,12 +38,12 @@ exports.installClicker = function(){
 exports.fixCanvasPos = function(){
 	var de = document.documentElement;
 
-	var fix = function(e){
-	    canvasLeft = (de.clientWidth - 640) / 2;
-	    canvasTop = (de.clientHeight - 480) / 2 - 40;
+	var fix = function( e ){
+	    canvasLeft = ( de.clientWidth - 640 ) / 2;
+	    canvasTop = ( de.clientHeight - 480 ) / 2 - 40;
 	};
 
 	fix();
 
-	Ucren.addEvent(window, "resize", fix);
+	Ucren.addEvent( window, "resize", fix );
 };

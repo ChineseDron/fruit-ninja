@@ -1,5 +1,5 @@
-var layer = require("../layer");
-var timeline =require("../timeline");
+var layer = require( "../layer" );
+var timeline =require( "../timeline" );
 
 var text, fps = "fps: ";
 

@@ -1,8 +1,8 @@
-var layer = require("../layer");
-var tween = require("../lib/tween");
-var timeline = require("../timeline");
-var Ucren = require("../lib/ucren");
-var message = require("../message");
+var layer = require( "../layer" );
+var tween = require( "../lib/tween" );
+var timeline = require( "../timeline" );
+var Ucren = require( "../lib/ucren" );
+var message = require( "../message" );
 
 var anim = tween.exponential.co;
 var back = tween.back.co;
@@ -25,6 +25,13 @@ exports.set = function(){
     o1 = layer.createImage( "default", conf1.src, conf1.sx, conf1.y, conf1.w, conf1.h ).hide();
     o2 = layer.createImage( "default", conf2.src, conf2.sx, conf2.y, conf2.w, conf2.h ).hide();
     o3 = layer.createImage( "default", conf3.src, conf3.sx, conf3.y, conf3.w, conf3.h ).hide();
+};
+
+exports.reset = function(){
+    number = 0;
+    [ [ o1, conf1 ], [ o2, conf2 ], [ o3, conf3 ] ].forEach(function( infx ){
+        infx[0].attr( "src", infx[1].src.replace( "xf.png", "x.png" ) );
+    })
 };
 
 exports.show = function( start ){
@@ -58,7 +65,6 @@ exports.showLoseAt = function( x ){
     this.scaleImage( infx[0] );
     
     if( number == 3 )
-        number = 0,
         message.postMessage( "game.over" );
 };
 
@@ -96,9 +102,7 @@ exports.onTimeStart = function( mode ){
 exports.onTimeEnd = function( mode ){
     if( mode == "hide" )
         [ o1, o2, o3 ].invoke( "hide" ),
-        [ [ o1, conf1 ], [ o2, conf2 ], [ o3, conf3 ] ].forEach(function( infx ){
-            infx[0].attr( "src", infx[1].src.replace( "xf.png", "x.png" ) );
-        });
+        this.reset();
 };
 
 function createPosShow( x ){

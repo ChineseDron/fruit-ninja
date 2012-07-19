@@ -5,22 +5,31 @@
 /**
  * 使用方法：
  * 
- * var sound = require("sound/main");
+ * var sound = require( "sound/main" );
  * 
  * var snd = sound.create("sounds/myfile");
  * snd.play();
  */
 
-var buzz = require("buzz");
+var buzz = require( "buzz" );
+var supported = buzz.isSupported();
+
+var config = { 
+	formats: [ "ogg", "mp3" ], 
+	preload: true, 
+	autoload: true, 
+	loop: false 
+};
 
 function ClassBuzz( src ){
-    this.sound = new buzz.sound( src, { formats: [ "ogg", "mp3" ], preload: true, autoload: true, loop: false });
+    this.sound = new buzz.sound( src, config );
 }
 
-ClassBuzz.prototype.play = function(){
-	this.sound.setPercent( 0 );
-	this.sound.setVolume( 100 );
-	this.sound.play();
+ClassBuzz.prototype.play = function( s ){
+	s = this.sound;
+	s.setPercent( 0 );
+	s.setVolume( 100 );
+	s.play();
 };
 
 ClassBuzz.prototype.stop = function(){
@@ -29,6 +38,19 @@ ClassBuzz.prototype.stop = function(){
 	} );
 };
 
+
 exports.create = function( src ){
-    return new ClassBuzz( src );
+	if( !supported )
+	    return unSupported;
+	else
+    	return new ClassBuzz( src );
 }
+
+function unSupported(){
+	// TODO: 
+}
+
+unSupported.play =
+unSupported.stop = function(){
+	// TODO: 
+};

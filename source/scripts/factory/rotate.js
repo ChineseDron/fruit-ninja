@@ -1,6 +1,6 @@
-var layer = require("../layer");
-var timeline = require("../timeline");
-var Ucren = require("../lib/ucren");
+var layer = require( "../layer" );
+var timeline = require( "../timeline" );
+var Ucren = require( "../lib/ucren" );
 
 /**
  * 旋转类模块模型

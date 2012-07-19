@@ -1,11 +1,12 @@
-var layer = require("../layer");
-var Ucren = require("../lib/ucren");
-var timeline = require( "../timeline" );
-var tween = require("../lib/tween");
-var message = require("../message");
-var flame = require("../object/flame");
-var flash = require("../object/flash");
-var juice = require("../factory/juice");
+var layer = require( "../layer" );
+var Ucren = require( "../lib/ucren" );
+var timeline = require( "../timeline" ).use( "fruit" ).init( 1 );
+var timeline2 = require( "../timeline" ).use( "fruit-apart" ).init( 1 );
+var tween = require( "../lib/tween" );
+var message = require( "../message" );
+var flame = require( "../object/flame" );
+var flash = require( "../object/flash" );
+var juice = require( "../factory/juice" );
 
 var ie = Ucren.isIe;
 var safari = Ucren.isSafari;
@@ -74,7 +75,11 @@ ClassFruit.prototype.set = function( hide ){
 };
 
 ClassFruit.prototype.pos = function( x, y ){
+	if( x == this.originX && y == this.originY )
+	    return ;
+
 	var r = this.radius;
+
 	this.originX = x;
 	this.originY = y;
 
@@ -83,10 +88,6 @@ ClassFruit.prototype.pos = function( x, y ){
 
 	if( this.type === "boom" )
 	    this.flame.pos( x + 4, y + 5 );
-
-	if( this.fallOffing && !this.fallOutOfViewerCalled && y > 480 + this.radius )
-		this.fallOutOfViewerCalled = 1,
-	    message.postMessage( this, "fruit.fallOutOfViewer" );
 };
 
 ClassFruit.prototype.show = function( start ){
@@ -112,7 +113,7 @@ ClassFruit.prototype.hide = function( start ){
 
 ClassFruit.prototype.rotate = function( start, speed ){
 	this.rotateSpeed = speed || rotateSpeed[ random( 6 ) ];
-	timeline.createTask({ 
+	this.rotateAnim = timeline.createTask({
 		start: start, duration: -1, 
 		object: this, onTimeUpdate: this.onRotating,
 		recycle: this.anims
@@ -161,7 +162,7 @@ ClassFruit.prototype.apart = function( angle ){
 	[ this.bImage1, this.bImage2 ].invoke( "rotate", angle );
 
 	this.apartAngle = angle;
-	timeline.createTask({ 
+	timeline2.createTask({ 
 		start: 0, duration: dropTime, object: this, 
 		onTimeUpdate: this.onBrokenDropUpdate, onTimeStart: this.onBrokenDropStart, onTimeEnd: this.onBrokenDropEnd,
 		recycle: this.anims
@@ -200,7 +201,6 @@ ClassFruit.prototype.fallOff = function(){
 
 		if( this.aparted || this.brokend )
 			return ;
-		this.fallOffing = 1;
 
 		var y = 600;
 
@@ -328,10 +328,12 @@ ClassFruit.prototype.onShotOutEnd = function(){
 // 掉落相关
 
 ClassFruit.prototype.onFalling = function( time ){
+	var y;
 	this.pos( 
 		linearAnim( time, this.brokenPosX, this.fallTargetX - this.brokenPosX, dropTime ), 
-		dropAnim( time, this.brokenPosY, this.fallTargetY - this.brokenPosY, dropTime ) 
+		y = dropAnim( time, this.brokenPosY, this.fallTargetY - this.brokenPosY, dropTime ) 
 	);
+	this.checkForFallOutOfViewer( y );
 };
 
 ClassFruit.prototype.onFallStart = function(){
@@ -342,6 +344,15 @@ ClassFruit.prototype.onFallStart = function(){
 ClassFruit.prototype.onFallEnd = function(){
 	message.postMessage( this, "fruit.fallOff" );
 	this.remove();
+};
+
+// privates
+
+ClassFruit.prototype.checkForFallOutOfViewer = function( y ){
+	if( y > 480 + this.radius )
+		this.checkForFallOutOfViewer = Ucren.nul,
+		this.rotateAnim && this.rotateAnim.stop(),
+	    message.postMessage( this, "fruit.fallOutOfViewer" );
 };
 
 exports.create = function( type, originX, originY, isHide, flameStart ){

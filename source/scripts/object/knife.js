@@ -1,6 +1,6 @@
-var timeline = require("../timeline");
+var timeline = require( "../timeline" );
 var layer = require( "../layer" ).getLayer( "knife" );
-var Ucren = require("../lib/ucren");
+var Ucren = require( "../lib/ucren" );
 
 /**
  * 刀光模块

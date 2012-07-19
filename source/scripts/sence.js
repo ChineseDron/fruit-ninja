@@ -1,41 +1,41 @@
-var Ucren = require("lib/ucren");
-var sound = require("lib/sound");
-var fruit = require("factory/fruit");
-var flash = require("object/flash");
+var Ucren = require( "lib/ucren" );
+var sound = require( "lib/sound" );
+var fruit = require( "factory/fruit" );
+var flash = require( "object/flash" );
 
-var state = require("state");
-var message = require("message");
+var state = require( "state" );
+var message = require( "message" );
 
 // the fixed elements
-var background = require("object/background");
-var fps = require("object/fps");
+var background = require( "object/background" );
+var fps = require( "object/fps" );
 
 // the home page elements
-var homeMask = require("object/home-mask");
-var logo = require("object/logo");
-var ninja = require("object/ninja")
-var homeDesc = require("object/home-desc");
+var homeMask = require( "object/home-mask" );
+var logo = require( "object/logo" );
+var ninja = require( "object/ninja" )
+var homeDesc = require( "object/home-desc" );
 
-var dojo = require("object/dojo");
-var newGame = require("object/new-game");
-var quit = require("object/quit");
-var newSign = require("object/new");
+var dojo = require( "object/dojo" );
+var newGame = require( "object/new-game" );
+var quit = require( "object/quit" );
+var newSign = require( "object/new" );
 var peach, sandia, boom;
 
 // the elements in game body
-var score = require("object/score");
-var lose = require("object/lose");
+var score = require( "object/score" );
+var lose = require( "object/lose" );
 
 // the game logic
-var game = require("game");
+var game = require( "game" );
 
 // the elements in 'developing' module
-var developing = require("object/developing");
-var gameOver = require("object/game-over");
+var developing = require( "object/developing" );
+var gameOver = require( "object/game-over" );
 
 // commons
-var message = require("message");
-var timeline = require("timeline");
+var message = require( "message" );
+var timeline = require( "timeline" );
 var setTimeout = timeline.setTimeout.bind( timeline );
 var setInterval = timeline.setInterval.bind( timeline );
 

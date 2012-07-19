@@ -2,8 +2,8 @@
  * layer manager
  */
 
-var Raphael = require("lib/raphael");
-var Ucren = require("lib/ucren");
+var Raphael = require( "lib/raphael" );
+var Ucren = require( "lib/ucren" );
 
 var layers = {};
 var zindexs = {

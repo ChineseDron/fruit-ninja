@@ -1,8 +1,8 @@
-var layer = require("../layer");
-var tween = require("../lib/tween");
-var timeline = require("../timeline");
-var message = require("../message");
-var state = require("../state");
+var layer = require( "../layer" );
+var tween = require( "../lib/tween" );
+var timeline = require( "../timeline" );
+var message = require( "../message" );
+var state = require( "../state" );
 
 var exponential = tween.exponential.co;
 
