@@ -46,8 +46,8 @@ var gameStartSnd;
 exports.init = function(){
     menuSnd = sound.create( "sound/menu" );
     gameStartSnd = sound.create( "sound/start" );
-	[ background, homeMask, logo, ninja, homeDesc, dojo, newSign, newGame, quit, score, lose, developing, gameOver, flash, fps ].invoke( "set" );
-    setInterval( fps.update.bind( fps ), 500 );
+	[ background, homeMask, logo, ninja, homeDesc, dojo, newSign, newGame, quit, score, lose, developing, gameOver, flash /*, fps */ ].invoke( "set" );
+    // setInterval( fps.update.bind( fps ), 500 );
 };
 
 // switch sence

@@ -1,6 +1,6 @@
 ﻿/**
  * this file was compiled by jsbuild 0.9.6
- * @date Thu, 19 Jul 2012 16:31:35 UTC
+ * @date Fri, 20 Jul 2012 16:21:18 UTC
  * @author dron
  * @site http://ucren.com
  */
@@ -585,8 +585,8 @@ define("scripts/sence.js", function(exports){
 	exports.init = function(){
 	    menuSnd = sound.create( "sound/menu" );
 	    gameStartSnd = sound.create( "sound/start" );
-		[ background, homeMask, logo, ninja, homeDesc, dojo, newSign, newGame, quit, score, lose, developing, gameOver, flash, fps ].invoke( "set" );
-	    setInterval( fps.update.bind( fps ), 500 );
+		[ background, homeMask, logo, ninja, homeDesc, dojo, newSign, newGame, quit, score, lose, developing, gameOver, flash /*, fps */ ].invoke( "set" );
+	    // setInterval( fps.update.bind( fps ), 500 );
 	};
 	
 	// switch sence
@@ -4343,18 +4343,18 @@ define("scripts/object/flash.js", function(exports){
  * @source D:\hosting\demos\fruit-ninja\output\scripts\object\fps.js
  */ 
 define("scripts/object/fps.js", function(exports){
-	var layer = require("scripts/layer");
-	var timeline =require("scripts/timeline");
+	// var layer = require("scripts/layer");
+	// var timeline =require("scripts/timeline");
 	
-	var text, fps = "fps: ";
+	// var text, fps = "fps: ";
 	
-	exports.set = function(){
-		text = layer.createText( "default", fps + "0", 4, 470 ).attr( "fill", "#ccc" );
-	};
+	// exports.set = function(){
+	// 	text = layer.createText( "default", fps + "0", 4, 470 ).attr( "fill", "#ccc" );
+	// };
 	
-	exports.update = function(){
-		text.attr( "text", fps + ( timeline.getFPS() >> 0 ) );
-	};;
+	// exports.update = function(){
+	// 	text.attr( "text", fps + ( timeline.getFPS() >> 0 ) );
+	// };;
 
 	return exports;
 });
