@@ -8,6 +8,8 @@ http://weibo.com/baidujs
 ChangeLog
 
 	1.1
+		1.1.20120720
+			删除 fps 显示
 		1.1.20120719
 			timeline 重构
 		1.1.20120718
